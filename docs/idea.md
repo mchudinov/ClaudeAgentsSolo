@@ -33,6 +33,44 @@ Agent stores:
 - Build/test results
 - Error history
 
+### Command sandbox
+
+Add allow/deny rules
+
+Allowed:
+
+- dotnet restore
+- dotnet build
+- dotnet test
+- git status
+- git diff
+- git checkout
+- git commit
+- git push
+
+Blocked:
+
+- deleting repo root
+- reading secrets
+- accessing ~/.ssh
+- accessing .env files
+- arbitrary curl/wget
+- changing CI secrets
+- changing branch protection
+- force push
+
+### Task scope limits
+
+Add limits on in appsettings:
+
+- Max files changed per task
+- Max lines changed per task
+- Max execution time
+- Max model turns
+- Max tool calls
+- Max retry count
+- Max PR size
+
 ### Agent in actions
 
 Developer agent picks up items from a GitHUb project. Agent picks only itrems in "Ready" state.
@@ -48,23 +86,30 @@ Developer agent checks if there are any items in "In Progress" state and checks 
 
 ## Usage scenario
 
-1. Developer agent picks next item from the GitHub project and move item  to the "In progress" state.
-2. Developer agent creates a branch and does programming.
-3. Once programming is done Developer agent submits a pull request.
-4. Then moves the programmed item to the "In Review" state.
-5. Developer agent checks for the pull request is approved every 1 minute. It is a confoguration parameter in the appsettings file.
-6. Once approved Developer agent moves the item to the "Done" state.
-   Move to Done only when:
-   - PR is approved by a reviewer
-   - CI checks are green
-   - branch protection requirements are satisfied
-   - PR is merged
-
-7. Then Developer agent does compaction step:
-   - summarize completed task
-   - summarize changed files
-   - summarize decisions
-   - summarize test results
-   - summarize unresolved risks
-   - save compacted memory to state store
-8. Then Developer agent continues with next item.
+1. Developer agent polls GitHub Project for Ready items.
+2. Developer agent picks next item from the GitHub project and move item  to the "In progress" state.
+3. Developer agent creates a task branch and
+4. Developer agent analyses the issue, repository, relevant docs, and coding conventions.
+5. Developer agent creates an implementation plan and adds it to the item as comment.
+6. Developer agent modifies code in a sandboxed workspace.
+7. Developer agent runs build, tests, and static checks.
+8. Developer agent commits changes.
+9. Developer agent pushes branch.
+10. Developer agent creates a pull request.
+11. Developer agent moves the item to the "In Review" state.
+12. Developer agent waits for the pull request is approved. Agent cheks it every 1 minute. It is a confoguration parameter in the appsettings file.
+13. If changes are requested, agent continues on the same branch.
+14. Once approved Developer agent moves the item to the "Done" state.
+      Move to Done only when:
+      - PR is approved by a reviewer
+      - CI checks are green
+      - branch protection requirements are satisfied
+      - PR is merged
+15. Then Developer agent does compaction step:
+       - summarize completed task
+       - summarize changed files
+       - summarize decisions
+       - summarize test results
+       - summarize unresolved risks
+       - save compacted memory to state store
+16. Then Developer agent continues with next Ready item.
