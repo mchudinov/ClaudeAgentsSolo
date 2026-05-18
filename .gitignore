@@ -3,9 +3,7 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
-.claude/settings.local.json
 .vscode/
-.env*
 appsettings.Development*.json
 helm/chart/*
 helm/values.*.yaml
