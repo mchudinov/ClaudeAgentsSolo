@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Library/Library.csproj" />
+  <Project Path="Web/Web.csproj" />
+  <Project Path="AppHost/AppHost.csproj" />
+  <Project Path="ServiceDefaults/ServiceDefaults.csproj" />
+</Solution>

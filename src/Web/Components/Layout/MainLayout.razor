@@ -1,0 +1,80 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JS
+
+@code {
+    private bool _isDarkMode;
+
+    private bool IsDarkMode
+    {
+        get => _isDarkMode;
+        set
+        {
+            if (_isDarkMode == value) return;
+            _isDarkMode = value;
+            _ = SaveDarkModeAsync(value);
+        }
+    }
+
+    private MudTheme _theme = new MudTheme()
+    {
+        PaletteDark = new PaletteDark()
+        {
+            Primary = Colors.BlueGray.Darken3,
+            Tertiary = Colors.BlueGray.Darken1
+        }
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var stored = await JS.InvokeAsync<string>("localStorage.getItem", "isDarkMode");
+                if (bool.TryParse(stored, out var value))
+                {
+                    _isDarkMode = value;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // ignore if localStorage is unavailable
+            }
+        }
+    }
+
+    private async Task SaveDarkModeAsync(bool value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "isDarkMode", value ? "true" : "false");
+        }
+        catch
+        {
+            // ignore if localStorage is unavailable
+        }
+    }
+}
+
+<MudThemeProvider @bind-IsDarkMode="IsDarkMode" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudButton Variant="Variant.Text" Color="Color.Tertiary" Size="Size.Large" Href="/">Test</MudButton>
+        <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
+            <MudButton EndIcon="@Icons.Material.Filled.Info" Href="/How_it_works">How it works</MudButton>
+            <MudButton EndIcon="@Icons.Material.Filled.Visibility" Href="/Demo">Demo</MudButton>
+        </MudButtonGroup>
+        <MudSpacer />
+        <MudToggleIconButton Variant="Variant.Filled" Icon="@Icons.Material.Filled.DarkMode" ToggledIcon="@Icons.Material.Filled.WbSunny" @bind-Toggled="IsDarkMode" />
+    </MudAppBar>
+    <MudMainContent>
+
+        @Body
+
+    </MudMainContent>
+</MudLayout>
