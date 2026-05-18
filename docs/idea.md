@@ -7,19 +7,36 @@
 An AI agent based on Anthropic LLM model. Agent is .NET 10 C# developer.
 The agent will be deployed as a Docker container.
 Agents must be programmed using C# language and Anthropic .NET SDK.
+Use GitHub GraphQL API for deterministic project item updates "Ready -> In Progress -> In Review -> Done", create a branch, make a pull request.
+Use GitHub MCP for repository and project items exploration.
 
 ### AI Agent details
 
-The model must be a configuration option in appsettings. Use claude-opus-4-7 as default.
-Make /effort claude code parameter for the agent "xhigh". Make effort a configuration option in the appsettings.
+Configure Anthropic adaptive thinking / effort level in the appsettings.
+Default effort: xhigh.
+Default model: claude-opus-4-7.
 Agent must have GitHub MCP server available. GitHub MCP server is configured through the appsettings.
 Agent must have Context7 MCP server available. Context7 MCP server is configured through the appsettings.
 The role description for the agent is a separated file in markdown format in /personas/developer.md file.
 
+### Persistent state
+
+The agent must survive container restart.
+Agent stores:
+
+- Current GitHub item ID
+- Current branch
+- Current PR number
+- Current step
+- Last completed action
+- Compacted memory
+- Build/test results
+- Error history
+
 ### Agent in actions
 
 Developer agent picks up items from a GitHUb project. Agent picks only itrems in "Ready" state.
-The GitHun project is a configurtation parameter in appsettings file.
+The GitHub project is a configurtation parameter in appsettings file.
 Developer agent identifies what item picks up next.
 Developer agent checks for new items in "Ready" state every 1 minute. It is a confoguration parameter in the appsettings file.
 
@@ -37,5 +54,17 @@ Developer agent checks if there are any items in "In Progress" state and checks 
 4. Then moves the programmed item to the "In Review" state.
 5. Developer agent checks for the pull request is approved every 1 minute. It is a confoguration parameter in the appsettings file.
 6. Once approved Developer agent moves the item to the "Done" state.
-7. Then Developer agent does /compact command for it's context.
+   Move to Done only when:
+   - PR is approved by a reviewer
+   - CI checks are green
+   - branch protection requirements are satisfied
+   - PR is merged
+
+7. Then Developer agent does compaction step:
+   - summarize completed task
+   - summarize changed files
+   - summarize decisions
+   - summarize test results
+   - summarize unresolved risks
+   - save compacted memory to state store
 8. Then Developer agent continues with next item.
