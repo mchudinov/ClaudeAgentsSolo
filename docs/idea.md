@@ -9,6 +9,21 @@ The agent will be deployed as a Docker container.
 Agents must be programmed using C# language and Anthropic .NET SDK.
 Use GitHub GraphQL API for deterministic project item updates "Ready -> In Progress -> In Review -> Done", create a branch, make a pull request.
 Use GitHub MCP for repository and project items exploration.
+Use Dapr Actors for per-agent / per-task coordination.
+Use Dapr state store Redis for fast runtime state, locks, reminders, and short-term memory.
+Use Dapr actor reminders periodic tasks like:
+
+- Check for new items in "Ready" state
+- Cheks for PR approval
+
+Possible Data model ProgrammingTaskActor(githubProjectItemId):
+
+- task state
+- branch name
+- PR number
+- build/test status
+- approval status
+- failure reason
 
 ### AI Agent details
 
