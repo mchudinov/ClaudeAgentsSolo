@@ -4,10 +4,14 @@
 
 ### Core responsibility split
 
-Microsoft Agent Framework = agent abstraction, Anthropic connector, MCP tools, memory hooks
+#### Frameworks split
+
+Microsoft Agent Framework = agent abstraction, Anthropic connector, MCP tools
 Dapr Workflow             = durable long-running programming-task lifecycle
 Dapr Actors               = small stateful coordination actions
-Dapr State + Redis         = runtime state, sessions, task state, actor state, workflow state
+Dapr State + Redis        = runtime state, sessions, task state, actor state, workflow state
+
+#### Components split
 
 | Layer                           | Responsibility                                                |
 | ------------------------------- | ------------------------------------------------------------- |
@@ -22,22 +26,3 @@ Dapr State + Redis         = runtime state, sessions, task state, actor state, w
 | GitHub GraphQL/REST service     | Deterministic project/PR operations                           |
 | Build/test runner               | Executes `dotnet restore`, `dotnet build`, `dotnet test`      |
 | Policy engine                   | Controls what the agent is allowed to do                      |
-
-### Frameworks details
-
-#### Microsoft Agent Framework
-
-- agent session
-- tool calling
-- MCP integration
-- context providers
-- chat history providers
-- workflow/checkpoint abstraction
-
-#### Dapr
-
-- persistent state backend
-- actor state
-- workflow runtime
-- Redis/SQL/Cosmos abstraction
-- reliability around distributed execution

@@ -4,63 +4,6 @@ An AI agent ".NET 10 C# developer" based on Anthropic Opus LLM model.
 
 ## Requirements
 
-### Development Platform
-
-The agent will be deployed as a Docker container.
-Agents must be programmed using C# language and Microsoft Agent Framework library.
-
-Use Octokit.GraphQL.NET library for deterministic tasks:
-
-- moving GitHub Project item states
-- creating branches
-- pushing commits
-- creating PRs
-- checking approval/CI
-- marking task Done
-- adding comments to an item
-
-Use GitHub MCP for repository and project items exploration:
-
-- reading repository context
-- reading issues/PRs
-
-Use Dapr Workflow:
-   ProgrammingTaskWorkflow
-        |
-        +-- Activity: acquire task
-        +-- Activity: create branch
-        +-- Activity: run LLM planning
-        +-- Activity: modify code
-        +-- Activity: run build/tests
-        +-- Activity: create PR
-        +-- Wait for external event: PR approved / changes requested
-        +-- Activity: move item to Done
-        +-- Activity: compact memory
-
-Use Dapr Actor
-   ProgrammingTaskActor
-        - owns current state
-        - protects single-task concurrency with githubProjectItemId
-        - exposes status
-        - handles reminders/fallback polling
-
-Use Dapr state store Redis for fast runtime state, locks, reminders, agents memory, Dapr Agents and Workflow state.
-Use Dapr actor reminders for periodic tasks like:
-
-- Check for new items in "Ready" state
-- Cheks for PR approval
-
-Possible Data model ProgrammingTaskActor(githubProjectItemId):
-
-- task state
-- branch name
-- PR number
-- build/test status
-- approval status
-- failure reason
-
-Dapr supports resiliency policies for timeouts, retries/back-offs, and circuit breakers, and these can be applied to Dapr API calls when calling components. That should be part of the design, around GitHub, Anthropic API calls, MCP calls, and state store operations.
-
 ### AI Agent details
 
 Configure Anthropic adaptive thinking / effort level in the appsettings.
