@@ -1,15 +1,28 @@
 # Developer agent
 
-An AI agent ".NET 10 C# developer" based on Anthropic LLM model.
+An AI agent ".NET 10 C# developer" based on Anthropic Opus LLM model.
 
 ## Requirements
 
 ### Development Platform
 
 The agent will be deployed as a Docker container.
-Agents must be programmed using C# language and Anthropic .NET SDK.
-Use Octokit.GraphQL.NET library for deterministic project item updates "Ready -> In Progress -> In Review -> Done", create a branch, make a pull request, add a comment to an item.
-Use GitHub MCP for repository and project items exploration.
+Agents must be programmed using C# language and Microsoft Agent Framework library.
+
+Use Octokit.GraphQL.NET library for deterministic tasks:
+
+- moving GitHub Project item states
+- creating branches
+- pushing commits
+- creating PRs
+- checking approval/CI
+- marking task Done
+- adding comments to an item
+
+Use GitHub MCP for repository and project items exploration:
+
+- reading repository context
+- reading issues/PRs
 
 Use Dapr Workflow:
    ProgrammingTaskWorkflow
