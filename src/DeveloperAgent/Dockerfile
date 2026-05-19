@@ -11,19 +11,19 @@ EXPOSE 8089
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["Agent/Agent.csproj", "Agent/"]
-RUN dotnet restore "./Agent/Agent.csproj"
+COPY ["DeveloperAgent/DeveloperAgent.csproj", "DeveloperAgent/"]
+RUN dotnet restore "./DeveloperAgent/DeveloperAgent.csproj"
 COPY . .
-WORKDIR "/src/Agent"
-RUN dotnet build "./Agent.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/DeveloperAgent"
+RUN dotnet build "./DeveloperAgent.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Agent.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./DeveloperAgent.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Agent.dll"]
+ENTRYPOINT ["dotnet", "DeveloperAgent.dll"]
