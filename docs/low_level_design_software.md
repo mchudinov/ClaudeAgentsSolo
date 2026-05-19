@@ -22,6 +22,19 @@ Use **GitHub MCP** for repository and project items exploration:
 - reading repository context
 - reading issues/PRs
 
+### Dapr Workflow as the long-running task controller
+
+Dapr Workflows use actors internally and store workflow state in the configured actor state store.
+One GitHub Project item should become one workflow instance:
+
+```text
+Workflow instance ID:
+  github-project-item-{itemId}
+
+Workflow:
+  DeveloperTaskWorkflow
+```
+
 Use **Dapr Workflow**
    *ProgrammingTaskWorkflow* responcibilities
 
@@ -60,9 +73,9 @@ public interface IProgrammingTaskActor : IActor
     Task SetPhaseAsync(TaskPhase phase);
     Task SaveBranchAsync(string branchName);
     Task SavePullRequestAsync(int pullRequestNumber);
-    Task MarkWaitingForReviewAsync();
-    Task MarkApprovedAsync();
-    Task MarkChangesRequestedAsync();
+    Task MarkWaitingForReviewAsync();           # Mark this programming task as waiting for review in the agent’s internal state.
+    Task MarkApprovedAsync();                   # Mark this programming task as approved in the agent’s internal state.
+    Task MarkChangesRequestedAsync();           # Record that a review is requested changes on the pull request, so the agent must continue working on the same task and branch.
     Task<ProgrammingTaskState> GetStateAsync();
 }
 ```
