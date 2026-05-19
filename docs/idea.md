@@ -1,17 +1,38 @@
 # Developer agent
 
+An AI agent ".NET 10 C# developer" based on Anthropic LLM model.
+
 ## Requirements
 
 ### Development Platform
 
-An AI agent based on Anthropic LLM model. Agent is .NET 10 C# developer.
 The agent will be deployed as a Docker container.
 Agents must be programmed using C# language and Anthropic .NET SDK.
-Use GitHub GraphQL API for deterministic project item updates "Ready -> In Progress -> In Review -> Done", create a branch, make a pull request.
+Use Octokit.GraphQL.NET library for deterministic project item updates "Ready -> In Progress -> In Review -> Done", create a branch, make a pull request, add a comment to an item.
 Use GitHub MCP for repository and project items exploration.
-Use Dapr Actors for per-agent / per-task coordination.
-Use Dapr state store Redis for fast runtime state, locks, reminders, and short-term memory.
-Use Dapr actor reminders periodic tasks like:
+
+Use Dapr Workflow:
+   ProgrammingTaskWorkflow
+        |
+        +-- Activity: acquire task
+        +-- Activity: create branch
+        +-- Activity: run LLM planning
+        +-- Activity: modify code
+        +-- Activity: run build/tests
+        +-- Activity: create PR
+        +-- Wait for external event: PR approved / changes requested
+        +-- Activity: move item to Done
+        +-- Activity: compact memory
+
+Use Dapr Actor
+   ProgrammingTaskActor
+        - owns current state
+        - protects single-task concurrency with githubProjectItemId
+        - exposes status
+        - handles reminders/fallback polling
+
+Use Dapr state store Redis for fast runtime state, locks, reminders, agents memory, Dapr Agents and Workflow state.
+Use Dapr actor reminders for periodic tasks like:
 
 - Check for new items in "Ready" state
 - Cheks for PR approval
@@ -24,6 +45,8 @@ Possible Data model ProgrammingTaskActor(githubProjectItemId):
 - build/test status
 - approval status
 - failure reason
+
+Dapr supports resiliency policies for timeouts, retries/back-offs, and circuit breakers, and these can be applied to Dapr API calls when calling components. That should be part of the design, around GitHub, Anthropic API calls, MCP calls, and state store operations.
 
 ### AI Agent details
 
