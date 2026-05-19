@@ -112,7 +112,7 @@ Blocked:
 
 ### Task scope limits
 
-Add limits on in appsettings:
+Add limits in appsettings:
 
 - Max files changed per task
 - Max lines changed per task
