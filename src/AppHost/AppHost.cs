@@ -1,5 +1,5 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-builder.AddProject<Projects.Web>("web");
+builder.AddProject<Projects.DeveloperAgent>("web");
 
 builder.Build().Run();

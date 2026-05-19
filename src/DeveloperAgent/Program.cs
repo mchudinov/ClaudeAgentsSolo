@@ -81,7 +81,7 @@ public class Program
             app.MapStaticAssets();
             app.MapDefaultEndpoints(applicationStartTime);
 
-            app.MapRazorComponents<Web.Components.App>()
+            app.MapRazorComponents<DeveloperAgent.Components.App>()
                 .AddInteractiveServerRenderMode();
 
             app.MapGet("/info", () => """

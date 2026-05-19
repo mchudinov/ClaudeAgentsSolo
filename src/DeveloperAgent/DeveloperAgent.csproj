@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Library\Library.csproj" />
-    <ProjectReference Include="..\WebMudBlazorAspire.ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>
 
   <ItemGroup>
