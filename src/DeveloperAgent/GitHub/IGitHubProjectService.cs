@@ -13,8 +13,11 @@ public interface IGitHubProjectService
     /// </summary>
     Task<ProjectItem?> TryGetNextReadyItemAsync(CancellationToken ct);
 
-    /// <summary>Transitions a project item to a new state on the board.</summary>
-    Task MoveItemAsync(string projectItemId, ProjectState target, CancellationToken ct);
+    /// <summary>
+    /// Transitions a project item to a new state on the board.
+    /// If <paramref name="current"/> == <paramref name="target"/>, this is a no-op (mutation is skipped).
+    /// </summary>
+    Task MoveItemAsync(string projectItemId, ProjectState current, ProjectState target, CancellationToken ct);
 
     /// <summary>
     /// Posts a markdown comment on the underlying issue node of the project item.

@@ -43,10 +43,13 @@ public sealed class GitHubProjectServiceTests
         }
     };
 
-    // Builds the JSON that GetOptionIdsAsync parses
+    // Builds the JSON that FetchOptionLookupAsync parses.
+    // The Status field node now includes "id" (the field's own node ID, used for mutations)
+    // and "options" (each option's id and name for the forward/reverse maps).
     private static JsonElement BuildOptionIdsResponse(
         string ownerType = "Organization",
-        (string name, string id)[]? options = null)
+        (string name, string id)[]? options = null,
+        string statusFieldNodeId = "field-node-id")
     {
         options ??= [
             ("Ready", "opt-ready"),
@@ -65,6 +68,7 @@ public sealed class GitHubProjectServiceTests
                         "fields": {
                           "nodes": [
                             {
+                              "id": "{{statusFieldNodeId}}",
                               "name": "Status",
                               "options": [{{optsJson}}]
                             }
@@ -83,6 +87,7 @@ public sealed class GitHubProjectServiceTests
                         "fields": {
                           "nodes": [
                             {
+                              "id": "{{statusFieldNodeId}}",
                               "name": "Status",
                               "options": [{{optsJson}}]
                             }
@@ -116,18 +121,21 @@ public sealed class GitHubProjectServiceTests
     private static JsonElement BuildItemsResponse(
         string ownerType = "Organization",
         bool includeIssue = true,
-        bool includeDraftIssue = false)
+        bool includeDraftIssue = false,
+        string issueOptionId = "opt-ready",
+        int issueNumber = 42,
+        string issueTitle = "Implement feature X")
     {
         var nodes = new List<string>();
         if (includeIssue)
         {
-            nodes.Add("""
+            nodes.Add($$"""
                 {
                   "id": "pvitem-1",
                   "fieldValues": {
                     "nodes": [
                       {
-                        "optionId": "opt-ready",
+                        "optionId": "{{issueOptionId}}",
                         "field": { "name": "Status" }
                       }
                     ]
@@ -135,8 +143,8 @@ public sealed class GitHubProjectServiceTests
                   "content": {
                     "__typename": "Issue",
                     "id": "issue-node-1",
-                    "number": 42,
-                    "title": "Implement feature X",
+                    "number": {{issueNumber}},
+                    "title": "{{issueTitle}}",
                     "body": "Details here"
                   }
                 }
@@ -235,13 +243,10 @@ public sealed class GitHubProjectServiceTests
         var graphQL = Substitute.For<IGraphQLTransport>();
         var rest = Substitute.For<IRestTransport>();
 
-        // Option-ID query
+        // Single consolidated option-lookup query (includes field id + options)
         graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
                .Returns(BuildOptionIdsResponse());
-        // Status field ID query
-        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("ProjectV2SingleSelectField") && !s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
-               .Returns(BuildStatusFieldIdResponse());
-        // Project node ID query
+        // Project node ID query (separate — needed for the mutation projectId variable)
         graphQL.RunQueryAsync(Arg.Is<string>(s => !s.Contains("fields") && !s.Contains("options") && !s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
                .Returns(BuildProjectNodeIdResponse());
         // Mutation
@@ -252,10 +257,13 @@ public sealed class GitHubProjectServiceTests
 
         await svc.MoveItemAsync("pvitem-1", ProjectState.Ready, ProjectState.InProgress, CancellationToken.None);
 
-        // Mutation should be called once with the InProgress option ID
+        // Mutation should be called once with the InProgress option ID and field node ID
         await graphQL.Received(1).RunMutationAsync(
             Arg.Any<string>(),
-            Arg.Is<Dictionary<string, object>?>(d => d != null && d["optionId"].Equals("opt-inprogress")),
+            Arg.Is<Dictionary<string, object>?>(d =>
+                d != null &&
+                d["optionId"].Equals("opt-inprogress") &&
+                d["fieldId"].Equals("field-node-id")),
             Arg.Any<CancellationToken>());
     }
 
@@ -637,13 +645,16 @@ public sealed class GitHubProjectServiceTests
         graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
                .Returns(BuildOptionIdsResponse());
 
-        // Return one issue per items query call (InProgress + InReview = 2 calls)
+        // First call is InProgress query; second call is InReview query.
+        // Items must carry the matching option ID or they will be filtered out.
         var call = 0;
         graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
                .Returns(_ =>
                {
-                   call++;
-                   return BuildItemsResponse(includeIssue: true, includeDraftIssue: false);
+                   var c = call++;
+                   return c == 0
+                       ? BuildItemsResponse(includeIssue: true, includeDraftIssue: false, issueOptionId: "opt-inprogress")
+                       : BuildItemsResponse(includeIssue: true, includeDraftIssue: false, issueOptionId: "opt-inreview");
                });
 
         var svc = CreateService(graphQL, rest);
@@ -676,5 +687,148 @@ public sealed class GitHubProjectServiceTests
                 d["subjectId"].Equals("issue-node-xyz") &&
                 d["body"].Equals("Implementation plan: step 1")),
             Arg.Any<CancellationToken>());
+    }
+
+    // ── §D.9: State filtering regression tests ────────────────────────────────
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_returns_null_when_only_Done_items_exist()
+    {
+        // Items tagged opt-done must not surface from TryGetNextReadyItemAsync
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        // Items query returns one item tagged with Done option
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildItemsResponse(issueOptionId: "opt-done"));
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().BeNull("a Done-tagged item must not be returned as Ready");
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_skips_non_Ready_items_returns_only_Ready()
+    {
+        // Items query returns a mix: one InProgress item, one Ready item
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        // Build response with two items: InProgress (#10) and Ready (#42)
+        var twoItemsJson = """
+            {
+              "data": {
+                "organization": {
+                  "projectV2": {
+                    "items": {
+                      "nodes": [
+                        {
+                          "id": "pvitem-10",
+                          "fieldValues": {
+                            "nodes": [
+                              { "optionId": "opt-inprogress", "field": { "name": "Status" } }
+                            ]
+                          },
+                          "content": {
+                            "__typename": "Issue",
+                            "id": "issue-node-10",
+                            "number": 10,
+                            "title": "Already started",
+                            "body": ""
+                          }
+                        },
+                        {
+                          "id": "pvitem-42",
+                          "fieldValues": {
+                            "nodes": [
+                              { "optionId": "opt-ready", "field": { "name": "Status" } }
+                            ]
+                          },
+                          "content": {
+                            "__typename": "Issue",
+                            "id": "issue-node-42",
+                            "number": 42,
+                            "title": "Next ready task",
+                            "body": ""
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse(twoItemsJson).RootElement);
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.ContentNumber.Should().Be(42, "the InProgress item #10 must be skipped");
+        result.State.Should().Be(ProjectState.Ready);
+    }
+
+    [Fact]
+    public async Task GetInFlightItemsAsync_returns_items_with_correct_State_values()
+    {
+        // First call (InProgress) returns item with opt-inprogress;
+        // second call (InReview) returns item with opt-inreview.
+        // After the fix, State fields must reflect the parsed option ID.
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        var call = 0;
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(_ =>
+               {
+                   var c = call++;
+                   return c == 0
+                       ? BuildItemsResponse(issueOptionId: "opt-inprogress", issueNumber: 1, issueTitle: "WIP task")
+                       : BuildItemsResponse(issueOptionId: "opt-inreview", issueNumber: 2, issueTitle: "Under review");
+               });
+
+        var svc = CreateService(graphQL, rest);
+
+        var items = await svc.GetInFlightItemsAsync(CancellationToken.None);
+
+        items.Should().HaveCount(2);
+        items.Should().ContainSingle(i => i.State == ProjectState.InProgress, "first call returns InProgress item");
+        items.Should().ContainSingle(i => i.State == ProjectState.InReview, "second call returns InReview item");
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_item_with_unknown_optionId_is_excluded()
+    {
+        // An item tagged with an unrecognized option (e.g., "Backlog") must be silently dropped
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        // Item tagged with opt-backlog (not in the four known states)
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildItemsResponse(issueOptionId: "opt-backlog"));
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().BeNull("items with unrecognized option IDs must be excluded, not surfaced as Ready");
     }
 }

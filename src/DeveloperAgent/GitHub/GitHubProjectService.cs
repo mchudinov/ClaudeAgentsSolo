@@ -17,9 +17,19 @@ internal sealed class GitHubProjectService : IGitHubProjectService
     private readonly GitHubOptions _options;
     private readonly ILogger<GitHubProjectService> _logger;
 
-    // Lazy option-ID cache: key = state name, value = GitHub option ID
-    // Populated on first use and held for the process lifetime.
-    private volatile Task<IReadOnlyDictionary<string, string>>? _optionIdCache;
+    /// <summary>
+    /// Consolidated project metadata fetched in a single GraphQL round-trip.
+    /// Held for the process lifetime after first use.
+    /// </summary>
+    private sealed record OptionLookup(
+        /// <summary>Maps canonical state name (case-insensitive) → GitHub option ID.</summary>
+        IReadOnlyDictionary<string, string> NameToId,
+        /// <summary>Maps GitHub option ID → <see cref="ProjectState"/>. Unknown IDs are absent.</summary>
+        IReadOnlyDictionary<string, ProjectState> IdToState,
+        /// <summary>GraphQL node ID of the Status field (needed for mutations).</summary>
+        string StatusFieldNodeId);
+
+    private volatile Task<OptionLookup>? _optionCache;
 
     public GitHubProjectService(
         IGraphQLTransport graphQL,
@@ -33,22 +43,21 @@ internal sealed class GitHubProjectService : IGitHubProjectService
         _logger = logger;
     }
 
-    // ── State-option-ID cache ─────────────────────────────────────────────────
+    // ── Unified option/field cache ────────────────────────────────────────────
 
-    private Task<IReadOnlyDictionary<string, string>> GetOptionIdsAsync(CancellationToken ct)
+    private Task<OptionLookup> GetOptionLookupAsync(CancellationToken ct)
     {
-        // Thread-safe lazy init: Interlocked.CompareExchange ensures only one fetch fires.
-        if (_optionIdCache is not null) return _optionIdCache;
-
-        var fetching = FetchOptionIdsAsync(ct);
-        var existing = Interlocked.CompareExchange(ref _optionIdCache, fetching, null);
+        if (_optionCache is not null) return _optionCache;
+        var fetching = FetchOptionLookupAsync(ct);
+        var existing = Interlocked.CompareExchange(ref _optionCache, fetching, null);
         return existing ?? fetching;
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> FetchOptionIdsAsync(CancellationToken ct)
+    private async Task<OptionLookup> FetchOptionLookupAsync(CancellationToken ct)
     {
-        _logger.LogDebug("Fetching project status field option IDs for project #{ProjectNumber}", _options.Project.Number);
+        _logger.LogDebug("Fetching project status field metadata for project #{ProjectNumber}", _options.Project.Number);
 
+        // Single query: fetch field ID + all option IDs in one round-trip.
         var query = _options.Project.OwnerType == "Organization"
             ? BuildOrgProjectFieldQuery()
             : BuildUserProjectFieldQuery();
@@ -74,34 +83,59 @@ internal sealed class GitHubProjectService : IGitHubProjectService
         if (statusField.ValueKind == JsonValueKind.Undefined)
             throw new InvalidOperationException("Could not find 'Status' field on the GitHub project.");
 
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (statusField.TryGetProperty("options", out var options))
+        var statusFieldNodeId = statusField.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Status field node ID is null.");
+
+        // Build both maps from the options array in a single pass.
+        var nameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var idToState = new Dictionary<string, ProjectState>(StringComparer.OrdinalIgnoreCase);
+
+        if (statusField.TryGetProperty("options", out var optionsElement))
         {
-            foreach (var opt in options.EnumerateArray())
+            foreach (var opt in optionsElement.EnumerateArray())
             {
                 var name = opt.GetProperty("name").GetString()!;
                 var id = opt.GetProperty("id").GetString()!;
-                map[name] = id;
+                nameToId[name] = id;
             }
         }
 
-        _logger.LogDebug("Fetched {Count} status option IDs: {Names}", map.Count, string.Join(", ", map.Keys));
-        return map;
+        // Build reverse map using the four canonical state names from configuration.
+        var stateEntries = new[]
+        {
+            (_options.States.Ready,      ProjectState.Ready),
+            (_options.States.InProgress, ProjectState.InProgress),
+            (_options.States.InReview,   ProjectState.InReview),
+            (_options.States.Done,       ProjectState.Done),
+        };
+
+        foreach (var (stateName, state) in stateEntries)
+        {
+            if (nameToId.TryGetValue(stateName, out var optId))
+                idToState[optId] = state;
+        }
+
+        _logger.LogDebug(
+            "Fetched {Count} status options; {Mapped} mapped to known states",
+            nameToId.Count, idToState.Count);
+
+        return new OptionLookup(nameToId, idToState, statusFieldNodeId);
     }
 
-    // Raw GraphQL query strings (no JSON wrapping — the transport handles that)
+    // Raw GraphQL query strings — include both `id` and `options` so a single
+    // call covers field-node-ID + option-ID + reverse-map in one round-trip.
     private string BuildOrgProjectFieldQuery()
-        => $"query {{ organization(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ name options {{ id name }} }} }} }} }} }} }}";
+        => $"query {{ organization(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ id name options {{ id name }} }} }} }} }} }} }}";
 
     private string BuildUserProjectFieldQuery()
-        => $"query {{ user(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ name options {{ id name }} }} }} }} }} }} }}";
+        => $"query {{ user(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ id name options {{ id name }} }} }} }} }} }} }}";
 
     private async Task<string> GetOptionIdAsync(string stateName, CancellationToken ct)
     {
-        var map = await GetOptionIdsAsync(ct).ConfigureAwait(false);
-        if (!map.TryGetValue(stateName, out var id))
+        var lookup = await GetOptionLookupAsync(ct).ConfigureAwait(false);
+        if (!lookup.NameToId.TryGetValue(stateName, out var id))
             throw new InvalidOperationException(
-                $"GitHub project has no status option named '{stateName}'. Known: {string.Join(", ", map.Keys)}");
+                $"GitHub project has no status option named '{stateName}'. Known: {string.Join(", ", lookup.NameToId.Keys)}");
         return id;
     }
 
@@ -122,10 +156,12 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             return;
         }
 
-        var targetOptionId = await GetOptionIdAsync(StateToName(target), ct).ConfigureAwait(false);
+        var lookup = await GetOptionLookupAsync(ct).ConfigureAwait(false);
+        if (!lookup.NameToId.TryGetValue(StateToName(target), out var targetOptionId))
+            throw new InvalidOperationException(
+                $"GitHub project has no status option named '{StateToName(target)}'. Known: {string.Join(", ", lookup.NameToId.Keys)}");
 
-        // Look up the Status field ID on the project
-        var fieldId = await GetStatusFieldIdAsync(ct).ConfigureAwait(false);
+        var fieldId = lookup.StatusFieldNodeId;
 
         _logger.LogInformation("Moving project item {ItemId} to {Target}", projectItemId, target);
 
@@ -267,7 +303,8 @@ internal sealed class GitHubProjectService : IGitHubProjectService
 
     // ── GraphQL helpers ───────────────────────────────────────────────────────
 
-    // Cached project node ID (needed for mutations)
+    // Cached project node ID (needed for mutations; kept separate from OptionLookup
+    // because it comes from a different query path)
     private volatile Task<string>? _projectNodeIdCache;
 
     private Task<string> GetProjectNodeIdAsync(CancellationToken ct)
@@ -291,49 +328,13 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             : result.GetProperty("data").GetProperty("user").GetProperty("projectV2").GetProperty("id").GetString()!;
     }
 
-    // Cached Status field node ID
-    private volatile Task<string>? _statusFieldIdCache;
-
-    private Task<string> GetStatusFieldIdAsync(CancellationToken ct)
-    {
-        if (_statusFieldIdCache is not null) return _statusFieldIdCache;
-        var fetching = FetchStatusFieldIdAsync(ct);
-        var existing = Interlocked.CompareExchange(ref _statusFieldIdCache, fetching, null);
-        return existing ?? fetching;
-    }
-
-    private async Task<string> FetchStatusFieldIdAsync(CancellationToken ct)
-    {
-        var optionMap = await GetOptionIdsAsync(ct).ConfigureAwait(false);
-        // The field ID comes from the same query that gives us option IDs;
-        // re-run the query specifically for the field node ID.
-        var query = _options.Project.OwnerType == "Organization"
-            ? $"query {{ organization(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ id name }} }} }} }} }} }}"
-            : $"query {{ user(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ fields(first: 20) {{ nodes {{ ... on ProjectV2SingleSelectField {{ id name }} }} }} }} }} }}";
-
-        var result = await _graphQL.RunQueryAsync(query, null, ct).ConfigureAwait(false);
-
-        var projectNode = _options.Project.OwnerType == "Organization"
-            ? result.GetProperty("data").GetProperty("organization").GetProperty("projectV2")
-            : result.GetProperty("data").GetProperty("user").GetProperty("projectV2");
-
-        foreach (var field in projectNode.GetProperty("fields").GetProperty("nodes").EnumerateArray())
-        {
-            if (field.TryGetProperty("name", out var nameProp) &&
-                string.Equals(nameProp.GetString(), "Status", StringComparison.OrdinalIgnoreCase))
-            {
-                return field.GetProperty("id").GetString()!;
-            }
-        }
-
-        throw new InvalidOperationException("Could not find 'Status' field node ID on the GitHub project.");
-    }
-
     private async Task<List<ProjectItem>> QueryProjectItemsAsync(string optionId, CancellationToken ct)
     {
+        var lookup = await GetOptionLookupAsync(ct).ConfigureAwait(false);
+
         var query = _options.Project.OwnerType == "Organization"
-            ? BuildOrgItemsQuery(optionId)
-            : BuildUserItemsQuery(optionId);
+            ? BuildOrgItemsQuery()
+            : BuildUserItemsQuery();
 
         var result = await _graphQL.RunQueryAsync(query, null, ct).ConfigureAwait(false);
 
@@ -352,22 +353,59 @@ internal sealed class GitHubProjectService : IGitHubProjectService
                 typeProp.GetString() == "DraftIssue")
                 continue;
 
+            // Determine state; drop items whose option ID isn't in our map
+            var state = DetermineState(node, lookup.IdToState);
+            if (state is null) continue;
+
+            // Filter to the requested optionId — only include items in the requested state
+            if (!optionId.Equals(GetOptionIdFromFieldValues(node), StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var itemId = itemIdProp.GetString()!;
             var contentNodeId = content.GetProperty("id").GetString()!;
             var number = content.GetProperty("number").GetInt32();
             var title = content.GetProperty("title").GetString()!;
             var body = content.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() ?? "" : "";
 
-            // Determine state from fieldValues
-            var state = DetermineState(node);
-
-            items.Add(new ProjectItem(itemId, contentNodeId, number, title, body, state));
+            items.Add(new ProjectItem(itemId, contentNodeId, number, title, body, state.Value));
         }
 
         return items;
     }
 
-    private string BuildOrgItemsQuery(string optionId) => $$"""
+    /// <summary>
+    /// Extracts the raw option ID string from fieldValues.nodes for the Status field.
+    /// Returns null if absent.
+    /// </summary>
+    private static string? GetOptionIdFromFieldValues(JsonElement itemNode)
+    {
+        if (!itemNode.TryGetProperty("fieldValues", out var fieldValues)) return null;
+        foreach (var fv in fieldValues.GetProperty("nodes").EnumerateArray())
+        {
+            if (!fv.TryGetProperty("optionId", out var optId)) continue;
+            if (!fv.TryGetProperty("field", out var field)) continue;
+            if (!field.TryGetProperty("name", out var fieldName)) continue;
+            if (!string.Equals(fieldName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) continue;
+            return optId.GetString();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves the Status field option ID of an item to a <see cref="ProjectState"/>.
+    /// Returns <see langword="null"/> when the option ID is absent or not in the reverse map
+    /// (e.g. items in Backlog or other custom states that are not part of the four-value enum).
+    /// </summary>
+    private static ProjectState? DetermineState(
+        JsonElement itemNode,
+        IReadOnlyDictionary<string, ProjectState> idToState)
+    {
+        var optionId = GetOptionIdFromFieldValues(itemNode);
+        if (optionId is null) return null;
+        return idToState.TryGetValue(optionId, out var state) ? state : null;
+    }
+
+    private string BuildOrgItemsQuery() => $$"""
         query {
           organization(login: "{{_options.Owner}}") {
             projectV2(number: {{_options.Project.Number}}) {
@@ -395,7 +433,7 @@ internal sealed class GitHubProjectService : IGitHubProjectService
         }
         """;
 
-    private string BuildUserItemsQuery(string optionId) => $$"""
+    private string BuildUserItemsQuery() => $$"""
         query {
           user(login: "{{_options.Owner}}") {
             projectV2(number: {{_options.Project.Number}}) {
@@ -422,25 +460,6 @@ internal sealed class GitHubProjectService : IGitHubProjectService
           }
         }
         """;
-
-    private ProjectState DetermineState(JsonElement itemNode)
-    {
-        if (!itemNode.TryGetProperty("fieldValues", out var fieldValues)) return ProjectState.Ready;
-        foreach (var fv in fieldValues.GetProperty("nodes").EnumerateArray())
-        {
-            if (!fv.TryGetProperty("optionId", out var optId)) continue;
-            if (!fv.TryGetProperty("field", out var field)) continue;
-            if (!field.TryGetProperty("name", out var fieldName)) continue;
-            if (!string.Equals(fieldName.GetString(), "Status", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var optionIdStr = optId.GetString()!;
-            // We need the reverse map to determine state by option ID
-            // This is best-effort; GetOptionIdsAsync has already run before we get here
-            // For now we return Ready and let callers filter — since we query by optionId, all items match the state we queried
-            return ProjectState.Ready; // placeholder: state set by caller context
-        }
-        return ProjectState.Ready;
-    }
 
     // ── Review/check-run collapse ─────────────────────────────────────────────
 
