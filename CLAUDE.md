@@ -84,14 +84,13 @@ The `Workspace.AllowedCommands` allowlist in the LLD is the sandbox contract —
 
 **Always use the Context7 MCP server for any documentation search** — libraries, frameworks, SDKs, APIs, CLI tools, cloud services. This applies even to well-known names (ASP.NET Core, EF Core, Dapr, MudBlazor, Microsoft Agent Framework, Anthropic SDK, Octokit, MCP C# SDK, OpenTelemetry, Serilog, Aspire) and even when the answer feels obvious — training data may not reflect current APIs. Prefer Context7 over web search and over answering from memory. Do not use it for refactoring, business-logic debugging, or general programming concepts.
 
-### Plan and immplement a Step
+### Plan and immplement development steps
 
-When implement a development step:
-
-1. Create a GitHub project item in the ClaudeAgentsSolo project with title "Step-N Short description", a short description body, and status set to Backlog.
-2. Create a dedicated GitHub branch named after the step (e.g. Step-1-Create-AccountSnapshot-data-model)
-3. Move the corresponding GitHub project item to "In-progress" state
-4. Do all coding on that branch
+1. Plan all steps and create a GitHub project items in the ClaudeAgentsSolo project with title "Step-N Short description", a short description body, and status set to Backlog. Onew item for step.
+2. Pick up first item that should be implemented and move it to "Ready" state.
+3. Create a dedicated GitHub branch named after the step (e.g. Step-1-Create-AccountSnapshot-data-model)
+4. Move the corresponding GitHub project item to "In-progress" state
+5. Do all coding on that branch
 
 When programming is done:
 
@@ -99,3 +98,6 @@ When programming is done:
 2. Do all unit tests. Fix tests if not green.
 3. Merge to main if tests are all green.
 4. Delete the local and remote feature branch, move the GitHub project item to "Done" state, then remind the user to run /compact.
+5. Proceed to next step.
+
+Use subagents when parallel programming is possible.
