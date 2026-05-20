@@ -1,12 +1,11 @@
-using Azure;
-using Azure.AI.OpenAI;
+using DeveloperAgent.Configuration;
 using Library;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
 using MudBlazor.Services;
 
-namespace Web;
+namespace DeveloperAgent;
 
 public class Program
 {
@@ -23,24 +22,14 @@ public class Program
         try
         {
             var applicationStartTime = DateTimeOffset.UtcNow;
-            Serilog.Log.Logger.Information("Web is running");
-            Serilog.Log.Logger.Debug($".NET Version: {Environment.Version}");
+            Serilog.Log.Logger.Information("DeveloperAgent is starting");
+            Serilog.Log.Logger.Debug(".NET Version: {DotNetVersion}", Environment.Version);
             Serilog.Log.Logger.Debug("► Environment variables");
             Environment.GetEnvironmentVariables().OutputEnvironmentVariables();
 
-            var enviroment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json")
-                .AddJsonFile($"appsettings.{enviroment}.json", optional: true)
-                .AddEnvironmentVariables()
-                .Build();
-            var settings = configuration.GetRequiredSection("Settings").Get<Settings>() ?? throw new InvalidOperationException("Settings configuration section is missing or invalid.");
-
-            Serilog.Log.Logger.Information("► Final configuration");
-            configuration.AllConfigurationKeys().LogStrings();
-
             var builder = WebApplication.CreateBuilder(args);
 
+            // ── Logging ──────────────────────────────────────────────────────────
             var logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .Enrich.FromLogContext()
@@ -48,20 +37,53 @@ public class Program
             builder.Logging.ClearProviders();
             builder.Logging.AddSerilog(logger);
 
+            // ── Telemetry ─────────────────────────────────────────────────────────
             builder.AddOpenTelemetry();
 
-            builder.Services.AddRazorComponents()
-                .AddInteractiveServerComponents();
+            // ── Options — bind + eager validate intrinsic constraints ────────────
+            // GitHub identity (Owner, Url, Project.Number) is validated by the hosted
+            // service (plan 05), not at startup, so dotnet run works on a fresh checkout.
+            builder.Services
+                .AddOptions<AgentOptions>()
+                .Bind(builder.Configuration.GetSection("Agent"))
+                .Validate(o => o.PollIntervalSeconds > 0, "Agent.PollIntervalSeconds must be > 0")
+                .Validate(o => o.ReviewPollIntervalSeconds > 0, "Agent.ReviewPollIntervalSeconds must be > 0")
+                .Validate(o => o.MaxModelTurnsHardCap > 0, "Agent.MaxModelTurnsHardCap must be > 0")
+                .ValidateOnStart();
 
-            builder.Services.AddSingleton<Azure.AI.OpenAI.AzureOpenAIClient>(sp =>
+            builder.Services
+                .AddOptions<AnthropicOptions>()
+                .Bind(builder.Configuration.GetSection("Anthropic"));
+
+            builder.Services
+                .AddOptions<GitHubOptions>()
+                .Bind(builder.Configuration.GetSection("GitHub"));
+
+            builder.Services
+                .AddOptions<WorkspaceOptions>()
+                .Bind(builder.Configuration.GetSection("Workspace"))
+                .Validate(o => !string.IsNullOrEmpty(o.RootPath), "Workspace.RootPath must not be empty")
+                .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
+                .ValidateOnStart();
+
+            // ── Secret resolution — eager at startup ──────────────────────────────
+            builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();
+            builder.Services.AddSingleton<SecretsBundle>(sp =>
             {
-                return new AzureOpenAIClient(new Uri(settings.AzureOpenAI.Endpoint), new AzureKeyCredential(settings.AzureOpenAI.ApiKey));
+                var resolver = sp.GetRequiredService<ISecretResolver>();
+                var anthropicOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AnthropicOptions>>().Value;
+                var githubOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitHubOptions>>().Value;
+                return new SecretsBundle(
+                    AnthropicApiKey: resolver.Resolve(anthropicOptions.ApiKeySecretName),
+                    GitHubToken: resolver.Resolve(githubOptions.TokenSecretName));
             });
 
+            // ── UI ────────────────────────────────────────────────────────────────
+            builder.Services.AddRazorComponents()
+                .AddInteractiveServerComponents();
             builder.Services.AddMudServices();
 
-            builder.Services.AddSingleton<Settings>(settings);
-
+            // ── Build ─────────────────────────────────────────────────────────────
             var app = builder.Build();
 
             if (!app.Environment.IsDevelopment())
@@ -89,11 +111,15 @@ public class Program
                     /uptime uptime statistic
                     """);
 
+            Serilog.Log.Logger.Information("► Final configuration");
+            (builder.Configuration as Microsoft.Extensions.Configuration.IConfigurationRoot)
+                ?.AllConfigurationKeys().LogStrings();
+
             app.Run();
         }
         catch (Exception ex)
         {
-            Serilog.Log.Fatal(ex, "Web worker process terminated unexpectedly.");
+            Serilog.Log.Fatal(ex, "DeveloperAgent process terminated unexpectedly.");
         }
         finally
         {
