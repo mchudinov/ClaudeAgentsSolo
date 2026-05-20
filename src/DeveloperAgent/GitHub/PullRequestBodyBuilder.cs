@@ -26,18 +26,11 @@ public static class PullRequestBodyBuilder
         static string OrNone(string value) =>
             string.IsNullOrWhiteSpace(value) ? "None" : value;
 
-        return $"""
-            ## Summary
-            {summary}
-
-            ## User-visible behavior
-            {OrNone(userVisibleBehavior)}
-
-            ## Tests/validation run
-            {OrNone(testsValidationRun)}
-
-            ## Notes/assumptions
-            {OrNone(notesAssumptions)}
-            """;
+        // Explicit \n so the body is byte-identical regardless of the source file's line endings.
+        return
+            $"## Summary\n{summary}\n\n" +
+            $"## User-visible behavior\n{OrNone(userVisibleBehavior)}\n\n" +
+            $"## Tests/validation run\n{OrNone(testsValidationRun)}\n\n" +
+            $"## Notes/assumptions\n{OrNone(notesAssumptions)}\n";
     }
 }
