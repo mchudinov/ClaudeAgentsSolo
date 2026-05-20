@@ -1,4 +1,5 @@
 using DeveloperAgent.Configuration;
+using DeveloperAgent.GitHub;
 using Library;
 using Serilog;
 using Serilog.Debugging;
@@ -77,6 +78,13 @@ public class Program
                     AnthropicApiKey: resolver.Resolve(anthropicOptions.ApiKeySecretName),
                     GitHubToken: resolver.Resolve(githubOptions.TokenSecretName));
             });
+
+            // ── GitHub service ────────────────────────────────────────────────────
+            // Singletons are lazy: construction tolerates empty GitHubOptions.
+            // First use will fail fast if required config (Owner, etc.) is absent.
+            builder.Services.AddSingleton<IGraphQLTransport, OctokitGraphQLTransport>();
+            builder.Services.AddSingleton<IRestTransport, OctokitRestTransport>();
+            builder.Services.AddSingleton<IGitHubProjectService, GitHubProjectService>();
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
