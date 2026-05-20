@@ -8,6 +8,10 @@ A .NET 10 / .NET Aspire scaffold for **DeveloperAgent** — an autonomous "C# de
 
 **The design docs are well ahead of the code.** `docs/low_level_design_software.md` and `docs/idea.md` describe a system built on Microsoft Agent Framework + Anthropic provider + MCP (GitHub, Context7) + Dapr Workflows + Dapr Actors + Dapr state (Redis) + Octokit.GraphQL. **None of that is wired up yet.** The current `src/` is an Aspire AppHost hosting a single empty Blazor Server app (`DeveloperAgent`) that still has Azure OpenAI placeholder settings. Treat the docs as the target architecture and the code as a fresh canvas — when implementing, expect to add packages and projects rather than refactor existing ones.
 
+## Documentation lookups
+
+**Always use the Context7 MCP server for any documentation search** — libraries, frameworks, SDKs, APIs, CLI tools, cloud services. This applies even to well-known names (ASP.NET Core, EF Core, Dapr, MudBlazor, Microsoft Agent Framework, Anthropic SDK, Octokit, MCP C# SDK, OpenTelemetry, Serilog, Aspire) and even when the answer feels obvious — training data may not reflect current APIs. Prefer Context7 over web search and over answering from memory. Do not use it for refactoring, business-logic debugging, or general programming concepts.
+
 ## Solution layout
 
 Solution file is **`src/ClaudeAgentsSolo.slnx`** (the new XML solution format, not `.sln`). All four projects live under `src/`:
