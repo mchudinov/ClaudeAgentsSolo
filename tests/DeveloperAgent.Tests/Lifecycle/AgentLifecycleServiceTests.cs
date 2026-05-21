@@ -1,0 +1,252 @@
+using DeveloperAgent.Agent;
+using DeveloperAgent.Configuration;
+using DeveloperAgent.GitHub;
+using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Workspace;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
+using NSubstitute.ExceptionExtensions;
+
+namespace DeveloperAgent.Tests.Lifecycle;
+
+/// <summary>
+/// Unit tests for the outer poll loop in <see cref="AgentLifecycleService"/>.
+/// Tests drive <see cref="FakeTimeProvider"/> to advance the <see cref="PeriodicTimer"/>
+/// deterministically without real delays.
+/// </summary>
+public sealed class AgentLifecycleServiceTests
+{
+    private static readonly AgentOptions Options = new()
+    {
+        PollIntervalSeconds = 10,
+        ReviewPollIntervalSeconds = 10,
+        MaxModelTurnsHardCap = 40
+    };
+
+    private static ProjectItem MakeItem(string id = "item-1") =>
+        new(
+            ProjectItemId: id,
+            ContentNodeId: $"content-{id}",
+            ContentNumber: 42,
+            Title: "Add feature X",
+            BodyMarkdown: "Implement feature X",
+            State: ProjectState.InProgress);
+
+    private static TaskWorkspace MakeWorkspace(string itemId = "item-1") =>
+        new(ProjectItemId: itemId, BranchName: "agent/add-feature-x-abcd1234",
+            RepoRoot: "/workspace/item-1/repo", DefaultBranch: "main");
+
+    private static PullRequest MakePr(int number = 99) =>
+        new(Number: number, HeadSha: "abc123", HtmlUrl: $"https://github.com/org/repo/pull/{number}");
+
+    private AgentLifecycleService BuildService(
+        IGitHubProjectService github,
+        TaskExecutor taskExecutor,
+        ITaskStateStore stateStore,
+        FakeTimeProvider timeProvider) =>
+        new(NullLogger<AgentLifecycleService>.Instance,
+            OptionsFactory.Create(Options),
+            github,
+            taskExecutor,
+            stateStore,
+            timeProvider);
+
+    private static TaskExecutor BuildTaskExecutor(
+        IGitHubProjectService github,
+        IWorkspaceManager workspaceMgr,
+        IGitClient gitClient,
+        IAgentRunner agentRunner,
+        ITaskStateStore stateStore,
+        FakeTimeProvider timeProvider) =>
+        new(NullLogger<TaskExecutor>.Instance,
+            OptionsFactory.Create(Options),
+            github,
+            workspaceMgr,
+            gitClient,
+            agentRunner,
+            stateStore,
+            timeProvider);
+
+    [Fact]
+    public async Task Startup_logs_in_flight_items_and_skips()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        var inFlightItems = new[] { MakeItem("item-1"), MakeItem("item-2") };
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(inFlightItems);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns((ProjectItem?)null);
+
+        // Use a stub TaskExecutor (won't be called)
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = new AgentLifecycleService(
+            logger,
+            OptionsFactory.Create(Options),
+            github,
+            taskExecutor,
+            stateStore,
+            timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var executeTask = service.StartAsync(cts.Token);
+        await executeTask;
+
+        // Let the service start (GetInFlightItemsAsync is called before the timer loop)
+        await Task.Delay(50);
+
+        // Logger should have been called with LogWarning for the in-flight items
+        logger.Received().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        // TaskExecutor.RunAsync should NOT be called for the in-flight items
+        // (they are skipped, not executed)
+        await agentRunner.DidNotReceive().RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task No_Ready_item_on_tick_continues_loop()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<ProjectItem>());
+
+        var readyItem = MakeItem("item-ready") with { State = ProjectState.Ready };
+        var ws = MakeWorkspace("item-ready");
+        var pr = MakePr();
+
+        // First tick: null; second tick: real item; subsequent ticks: null
+        var tickCount = 0;
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                tickCount++;
+                return tickCount == 2 ? readyItem : (ProjectItem?)null;
+            });
+
+        workspaceMgr.PrepareAsync(readyItem.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ws);
+
+        // Agent returns Completed with PR; PR is immediately merged+approved
+        agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentRunResult(AgentRunOutcome.Completed, pr, 5, 10, null));
+
+        github.GetPullRequestStatusAsync(pr.Number, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(pr.Number, PullRequestReviewState.Approved, true, true, "abc"));
+
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+        var executeTask = service.StartAsync(cts.Token);
+        await executeTask;
+
+        await Task.Delay(50);
+
+        // First tick (null item) — advance time
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(50);
+
+        // Second tick (real item) — agent runs
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(50);
+
+        // Review timer tick — marks PR as done
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+        await Task.Delay(200);
+
+        // RunAsync was called exactly once (only on the second tick)
+        await agentRunner.Received(1).RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Unhandled_exception_in_executor_releases_item_to_Ready_with_crash_comment()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<ProjectItem>());
+
+        var readyItem = MakeItem("item-crash") with { State = ProjectState.Ready };
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns(readyItem);
+
+        // PrepareAsync throws
+        workspaceMgr.PrepareAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+        var executeTask = service.StartAsync(cts.Token);
+        await executeTask;
+
+        await Task.Delay(50);
+
+        // Tick — triggers the executor which throws
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+        await Task.Delay(200);
+
+        // Comment should contain "Agent crashed"
+        await github.Received(1).AddItemCommentAsync(
+            readyItem.ContentNodeId,
+            Arg.Is<string>(s => s.Contains("Agent crashed")),
+            Arg.Any<CancellationToken>());
+
+        // Item should be moved back to Ready
+        await github.Received(1).MoveItemAsync(
+            readyItem.ProjectItemId,
+            ProjectState.InProgress,
+            ProjectState.Ready,
+            Arg.Any<CancellationToken>());
+
+        // State store should be cleared after the crash
+        stateStore.Current.Should().BeNull();
+
+        cts.Cancel();
+    }
+
+}
+
+file static class OptionsFactory
+{
+    public static IOptions<T> Create<T>(T value) where T : class =>
+        Microsoft.Extensions.Options.Options.Create(value);
+}
