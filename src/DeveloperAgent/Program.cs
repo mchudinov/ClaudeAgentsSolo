@@ -1,3 +1,5 @@
+using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workspace;
@@ -98,6 +100,21 @@ public class Program
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
+
+            // ── Agent ─────────────────────────────────────────────────────────────
+            // PersonaLoader throws at construction if persona file is missing or empty.
+            // AnthropicSdkClient resolves the API key lazily (on first SendAsync) so
+            // an unconfigured dotnet run does not crash.
+            builder.Services.AddSingleton<PersonaLoader>();
+            builder.Services.AddSingleton<IAnthropicClient, AnthropicSdkClient>();
+            builder.Services.AddSingleton<ITool, ReadFileTool>();
+            builder.Services.AddSingleton<ITool, WriteFileTool>();
+            builder.Services.AddSingleton<ITool, EditFileTool>();
+            builder.Services.AddSingleton<ITool, ListDirectoryTool>();
+            builder.Services.AddSingleton<ITool, ShellRunTool>();
+            builder.Services.AddSingleton<ITool, CommentOnItemTool>();
+            builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
+            builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
