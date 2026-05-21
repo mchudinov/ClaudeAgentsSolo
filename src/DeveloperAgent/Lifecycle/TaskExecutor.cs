@@ -94,7 +94,7 @@ public sealed class TaskExecutor(
             state = state with
             {
                 Phase = TaskPhase.Failed,
-                LastError = result.TerminationReason,
+                LastError = SanitizeLastError(result),
                 UpdatedAtUtc = timeProvider.GetUtcNow()
             };
             taskStateStore.Set(state);
@@ -221,7 +221,7 @@ public sealed class TaskExecutor(
                     state = state with
                     {
                         Phase = TaskPhase.Failed,
-                        LastError = result.TerminationReason,
+                        LastError = SanitizeLastError(result),
                         UpdatedAtUtc = timeProvider.GetUtcNow()
                     };
                     taskStateStore.Set(state);
@@ -255,4 +255,15 @@ public sealed class TaskExecutor(
         // WaitForNextTickAsync returned false — cancellation (stoppingToken).
         return new TaskExecutionResult(TaskOutcome.Cancelled);
     }
+
+    /// <summary>
+    /// Returns a safe <see cref="TaskState.LastError"/> value.
+    /// For <see cref="AgentRunOutcome.SandboxViolation"/> the termination reason is
+    /// the offending command line, which must not be surfaced through the public /info
+    /// endpoint.  All other outcomes pass the reason through unchanged.
+    /// </summary>
+    private static string? SanitizeLastError(AgentRunResult result) =>
+        result.Outcome == AgentRunOutcome.SandboxViolation
+            ? "Sandbox violation"
+            : result.TerminationReason;
 }
