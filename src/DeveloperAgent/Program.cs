@@ -2,6 +2,7 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Workspace;
 using Library;
 using Serilog;
@@ -116,6 +117,12 @@ public class Program
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
             builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
 
+            // ── Lifecycle ─────────────────────────────────────────────────────────
+            builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+            builder.Services.AddSingleton<ITaskStateStore, InMemoryTaskStateStore>();
+            builder.Services.AddSingleton<TaskExecutor>();
+            builder.Services.AddHostedService<AgentLifecycleService>();
+
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
@@ -144,10 +151,30 @@ public class Program
             app.MapRazorComponents<DeveloperAgent.Components.App>()
                 .AddInteractiveServerRenderMode();
 
-            app.MapGet("/info", () => """
-                    /livez liveness check
-                    /uptime uptime statistic
-                    """);
+            app.MapGet("/info", (ITaskStateStore taskStateStore) =>
+            {
+                var task = taskStateStore.Current;
+                object? taskDto = task is null
+                    ? null
+                    : new
+                    {
+                        projectItemId = task.ProjectItemId,
+                        issueNumber = task.IssueNumber,
+                        title = task.Title,
+                        phase = task.Phase.ToString(),
+                        branchName = task.BranchName,
+                        pullRequestNumber = task.PullRequestNumber,
+                        lastError = task.LastError,
+                        startedAtUtc = task.StartedAtUtc,
+                        updatedAtUtc = task.UpdatedAtUtc
+                    };
+
+                return Results.Json(new
+                {
+                    endpoints = new[] { "/livez", "/uptime", "/info", "/health", "/alive" },
+                    task = taskDto
+                });
+            });
 
             Serilog.Log.Logger.Information("► Final configuration");
             (builder.Configuration as Microsoft.Extensions.Configuration.IConfigurationRoot)
