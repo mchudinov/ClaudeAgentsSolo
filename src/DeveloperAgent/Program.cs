@@ -1,5 +1,6 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Workspace;
 using Library;
 using Serilog;
 using Serilog.Debugging;
@@ -85,6 +86,18 @@ public class Program
             builder.Services.AddSingleton<IGraphQLTransport, OctokitGraphQLTransport>();
             builder.Services.AddSingleton<IRestTransport, OctokitRestTransport>();
             builder.Services.AddSingleton<IGitHubProjectService, GitHubProjectService>();
+
+            // ── Workspace / Git / Sandbox ─────────────────────────────────────
+            // IProcessRunner and CommandSandbox have internal constructors (IProcessRunner
+            // is internal), so DI reflection cannot see them. Register via factory lambdas
+            // which execute inside this assembly and can access internal members.
+            builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
+            builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
+                sp.GetRequiredService<IProcessRunner>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
+            builder.Services.AddSingleton<IGitClient, GitClient>();
+            builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
