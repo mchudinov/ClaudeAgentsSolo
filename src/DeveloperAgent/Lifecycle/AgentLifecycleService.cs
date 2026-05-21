@@ -25,19 +25,36 @@ public sealed class AgentLifecycleService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // ── Startup: log any items already in-flight (phase-1 skips recovery) ──
-        var inFlight = await github.GetInFlightItemsAsync(stoppingToken);
-        if (inFlight.Count > 0)
+        // Tolerate misconfiguration here so dotnet run boots even without real GitHub
+        // credentials. The per-tick loop below catches its own exceptions and degrades
+        // gracefully (item-by-item failure handling).
+        try
         {
-            logger.LogWarning(
-                "Items already in InProgress/InReview at startup; skipping in phase 1 (recovery is phase 2). Count={Count}",
-                inFlight.Count);
-
-            foreach (var item in inFlight)
+            var inFlight = await github.GetInFlightItemsAsync(stoppingToken);
+            if (inFlight.Count > 0)
             {
                 logger.LogWarning(
-                    "In-flight item skipped. {ItemId} {IssueNumber} {Title} {State}",
-                    item.ProjectItemId, item.ContentNumber, item.Title, item.State);
+                    "Items already in InProgress/InReview at startup; skipping in phase 1 (recovery is phase 2). Count={Count}",
+                    inFlight.Count);
+
+                foreach (var item in inFlight)
+                {
+                    logger.LogWarning(
+                        "In-flight item skipped. {ItemId} {IssueNumber} {Title} {State}",
+                        item.ProjectItemId, item.ContentNumber, item.Title, item.State);
+                }
             }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Startup in-flight check failed (likely misconfigured GitHub credentials or unreachable API). " +
+                "The poll loop will start anyway; per-tick failures are handled in the loop. Message={Message}",
+                ex.Message);
         }
 
         // ── Outer poll loop ────────────────────────────────────────────────────
@@ -47,7 +64,24 @@ public sealed class AgentLifecycleService(
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var item = await github.TryGetNextReadyItemAsync(stoppingToken);
+            GitHub.ProjectItem? item;
+            try
+            {
+                item = await github.TryGetNextReadyItemAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to poll for ready items this tick (likely transient GitHub error). " +
+                    "Skipping tick; will retry on next interval. Message={Message}",
+                    ex.Message);
+                continue;
+            }
+
             if (item is null)
             {
                 logger.LogDebug("No ready item on this tick.");

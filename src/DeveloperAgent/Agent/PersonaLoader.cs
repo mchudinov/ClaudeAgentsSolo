@@ -25,22 +25,36 @@ public sealed class PersonaLoader
     /// </exception>
     public PersonaLoader(IOptions<AgentOptions> options, IHostEnvironment env)
     {
-        var personaPath = options.Value.PersonaPath;
+        var configured = options.Value.PersonaPath;
+        string? resolved = null;
 
-        // Resolve relative to ContentRootPath if not already absolute
-        if (!Path.IsPathRooted(personaPath))
-            personaPath = Path.Combine(env.ContentRootPath, personaPath);
+        if (Path.IsPathRooted(configured))
+        {
+            if (File.Exists(configured)) resolved = configured;
+        }
+        else
+        {
+            // ContentRootPath first (so tests substituting a temp root work), then
+            // AppContext.BaseDirectory (the published output dir where
+            // <Content Include="..\..\personas\**\*.md" CopyToOutputDirectory> lands the file
+            // in local dev when ContentRoot=src/DeveloperAgent doesn't itself contain personas/).
+            foreach (var root in new[] { env.ContentRootPath, AppContext.BaseDirectory })
+            {
+                var candidate = Path.Combine(root, configured);
+                if (File.Exists(candidate)) { resolved = candidate; break; }
+            }
+        }
 
-        if (!File.Exists(personaPath))
+        if (resolved is null)
             throw new InvalidOperationException(
-                $"Persona file not found: {personaPath}. " +
+                $"Persona file not found for configured path '{configured}'. Tried " +
+                $"{AppContext.BaseDirectory} and {env.ContentRootPath}. " +
                 "Ensure the file is present at startup (check the csproj <Content Include> for personas/).");
 
-        var text = File.ReadAllText(personaPath);
+        var text = File.ReadAllText(resolved);
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException(
-                $"Persona file is empty: {personaPath}. " +
-                "The agent requires a non-empty persona to operate.");
+                $"Persona file is empty: {resolved}. The agent requires a non-empty persona.");
 
         Persona = text;
     }

@@ -115,7 +115,15 @@ public class Program
             builder.Services.AddSingleton<ITool, ShellRunTool>();
             builder.Services.AddSingleton<ITool, CommentOnItemTool>();
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
-            builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
+            // AnthropicAgentRunner has an internal constructor (because IAnthropicClient is internal).
+            // DI reflection only sees public constructors, so register via a factory lambda that
+            // executes inside this assembly and can therefore see the internal constructor.
+            builder.Services.AddSingleton<IAgentRunner>(sp => new AnthropicAgentRunner(
+                sp.GetRequiredService<IAnthropicClient>(),
+                sp.GetRequiredService<PersonaLoader>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>(),
+                sp.GetServices<ITool>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AnthropicAgentRunner>>()));
 
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
