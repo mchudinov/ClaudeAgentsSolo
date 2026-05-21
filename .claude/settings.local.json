@@ -6,13 +6,18 @@
       "Bash(git commit *)",
       "Bash(git stash *)",
       "Bash(git *)",
+      "Bash(git log *)",
       "Skill(superpowers:systematic-debugging)",
       "Skill(superpowers:systematic-debugging:*)",
       "Skill(superpowers:writing-plans)",
       "Skill(superpowers:subagent-driven-development)",
       "Bash(dotnet clean *)",
       "Bash(dotnet test *)",
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet run *)",
+      "PowerShell(Start-Sleep -Seconds 10; try { \\(Invoke-WebRequest -Uri http://localhost:18089/livez -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"livez: $\\($_.Exception.Message\\)\" }; try { \\(Invoke-WebRequest -Uri http://localhost:18089/info -UseBasicParsing -TimeoutSec 5\\).Content } catch { \"info: $\\($_.Exception.Message\\)\" })"
     ]
   }
 }
