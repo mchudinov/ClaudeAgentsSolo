@@ -43,10 +43,26 @@ internal sealed class GitHubProjectService : IGitHubProjectService
         _logger = logger;
     }
 
+    // ── Config guard ──────────────────────────────────────────────────────────
+
+    private void EnsureConfigured()
+    {
+        if (string.IsNullOrWhiteSpace(_options.Owner))
+            throw new GitHubNotConfiguredException(
+                "GitHub.Owner is empty. Set it in appsettings.Development.json (or via env var) to the org/user that owns the project. " +
+                "Until configured, the poll loop will idle.");
+
+        if (_options.Project.Number <= 0)
+            throw new GitHubNotConfiguredException(
+                $"GitHub.Project.Number is {_options.Project.Number}. Set it in appsettings.Development.json (or via env var) " +
+                "to the project number shown in the GitHub UI URL. Until configured, the poll loop will idle.");
+    }
+
     // ── Unified option/field cache ────────────────────────────────────────────
 
     private Task<OptionLookup> GetOptionLookupAsync(CancellationToken ct)
     {
+        EnsureConfigured();
         if (_optionCache is not null) return _optionCache;
         var fetching = FetchOptionLookupAsync(ct);
         var existing = Interlocked.CompareExchange(ref _optionCache, fetching, null);

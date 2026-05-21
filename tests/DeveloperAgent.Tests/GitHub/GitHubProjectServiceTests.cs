@@ -811,6 +811,65 @@ public sealed class GitHubProjectServiceTests
         items.Should().ContainSingle(i => i.State == ProjectState.InReview, "second call returns InReview item");
     }
 
+    // ── §D.10: Unconfigured-GitHub guard ──────────────────────────────────────
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_throws_GitHubNotConfiguredException_when_Owner_is_empty()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        var unconfigured = DefaultOptions() with { Owner = "" };
+
+        var svc = CreateService(graphQL, rest, unconfigured);
+
+        var act = async () => await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<GitHubNotConfiguredException>()
+            .WithMessage("*Owner*");
+
+        // The guard must short-circuit before any GraphQL round-trip.
+        await graphQL.DidNotReceive().RunQueryAsync(
+            Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_throws_GitHubNotConfiguredException_when_ProjectNumber_is_zero()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        var unconfigured = DefaultOptions() with
+        {
+            Project = new ProjectOptions { Number = 0, OwnerType = "Organization" }
+        };
+
+        var svc = CreateService(graphQL, rest, unconfigured);
+
+        var act = async () => await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<GitHubNotConfiguredException>()
+            .WithMessage("*Project*Number*");
+
+        await graphQL.DidNotReceive().RunQueryAsync(
+            Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetInFlightItemsAsync_throws_GitHubNotConfiguredException_when_Owner_is_empty()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        var unconfigured = DefaultOptions() with { Owner = "" };
+
+        var svc = CreateService(graphQL, rest, unconfigured);
+
+        var act = async () => await svc.GetInFlightItemsAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<GitHubNotConfiguredException>();
+    }
+
     [Fact]
     public async Task TryGetNextReadyItemAsync_item_with_unknown_optionId_is_excluded()
     {

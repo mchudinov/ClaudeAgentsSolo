@@ -34,6 +34,12 @@ public class Program
 
             var builder = WebApplication.CreateBuilder(args);
 
+            // ── Configuration sources ────────────────────────────────────────────
+            builder.Configuration
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+                .AddEnvironmentVariables();
+
             // ── Logging ──────────────────────────────────────────────────────────
             var logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)

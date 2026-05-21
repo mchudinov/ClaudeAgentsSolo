@@ -49,6 +49,10 @@ public sealed class AgentLifecycleService(
         {
             throw;
         }
+        catch (GitHubNotConfiguredException ex)
+        {
+            logger.LogWarning("GitHub not configured — poll loop will idle. {Message}", ex.Message);
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex,
@@ -72,6 +76,11 @@ public sealed class AgentLifecycleService(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (GitHubNotConfiguredException ex)
+            {
+                logger.LogDebug("Poll tick skipped — GitHub not configured. {Message}", ex.Message);
+                continue;
             }
             catch (Exception ex)
             {
