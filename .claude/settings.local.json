@@ -17,7 +17,8 @@
       "Bash(dotnet run *)",
       "PowerShell(dotnet build *)",
       "PowerShell(dotnet run *)",
-      "PowerShell(Start-Sleep -Seconds 10; try { \\(Invoke-WebRequest -Uri http://localhost:18089/livez -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"livez: $\\($_.Exception.Message\\)\" }; try { \\(Invoke-WebRequest -Uri http://localhost:18089/info -UseBasicParsing -TimeoutSec 5\\).Content } catch { \"info: $\\($_.Exception.Message\\)\" })"
+      "PowerShell(Start-Sleep -Seconds 10; try { \\(Invoke-WebRequest -Uri http://localhost:18089/livez -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"livez: $\\($_.Exception.Message\\)\" }; try { \\(Invoke-WebRequest -Uri http://localhost:18089/info -UseBasicParsing -TimeoutSec 5\\).Content } catch { \"info: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(gh api *)"
     ]
   }
 }
