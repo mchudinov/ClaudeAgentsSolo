@@ -70,6 +70,72 @@ public sealed class AppHostResourceRegistrationTests
             string.Join(", ", annotations.Select(a => a.GetType().Name)));
     }
 
+    [Fact]
+    public async Task AppHost_registers_dapr_state_store_resource_named_agent_state_store()
+    {
+        await using var app = await BuildAppHostAsync();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        var resource = model.Resources.SingleOrDefault(r => r.Name == "agent-state-store");
+
+        resource.Should().NotBeNull(
+            because: "Step-8 (P2-A part 2/3) requires a Dapr state-store component named " +
+                     "'agent-state-store' to be registered in the AppHost model via " +
+                     "builder.AddDaprStateStore(\"agent-state-store\")");
+    }
+
+    [Fact]
+    public async Task Dapr_state_store_resource_references_agent_state_redis()
+    {
+        await using var app = await BuildAppHostAsync();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        var stateStore = model.Resources.SingleOrDefault(r => r.Name == "agent-state-store");
+        stateStore.Should().NotBeNull(
+            because: "the 'agent-state-store' Dapr state-store resource must be registered");
+
+        var annotations = stateStore!.Annotations.ToList();
+
+        // The state-store is wired to the Redis resource via .WaitFor(agentState),
+        // which attaches a WaitAnnotation whose .Resource property is the agent-state
+        // Redis resource. The reflective walker discovers it via that property.
+        var referencesAgentState = annotations.Any(a => AnnotationReferencesResource(a, "agent-state"));
+
+        referencesAgentState.Should().BeTrue(
+            because: "the 'agent-state-store' Dapr component must declare a dependency on " +
+                     "the 'agent-state' Redis resource (via WaitFor) so the sidecar starts " +
+                     "only after Redis is healthy. Annotation types present: {0}",
+            string.Join(", ", annotations.Select(a => a.GetType().Name)));
+    }
+
+    [Fact]
+    public async Task Web_project_has_dapr_sidecar_annotation()
+    {
+        await using var app = await BuildAppHostAsync();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        var web = model.Resources.SingleOrDefault(r => r.Name == "web");
+        web.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'web'");
+
+        var annotations = web!.Annotations.ToList();
+
+        // .WithDaprSidecar(sidecar => sidecar.WithReference(stateStore)) wires a sidecar
+        // onto 'web' and associates the 'agent-state-store' Dapr component with that
+        // sidecar. The DaprSidecarAnnotation on 'web' references the IDaprSidecarResource,
+        // which in turn carries a DaprComponentReferenceAnnotation pointing at the
+        // state-store resource. The walker is given a generous depth so it can follow:
+        //   web -> DaprSidecarAnnotation -> SidecarResource -> Annotations collection
+        //        -> DaprComponentReferenceAnnotation -> Component -> "agent-state-store"
+        var referencesStateStore = annotations.Any(a =>
+            AnnotationReferencesResource(a, "agent-state-store", maxDepth: 6));
+
+        referencesStateStore.Should().BeTrue(
+            because: "the 'web' project must declare a Dapr sidecar that references the " +
+                     "'agent-state-store' state-store component (via WithDaprSidecar + " +
+                     "sidecar.WithReference(stateStore)). Annotation types present: {0}",
+            string.Join(", ", annotations.Select(a => a.GetType().Name)));
+    }
+
     private static async Task<DistributedApplication> BuildAppHostAsync()
     {
         var builder = await DistributedApplicationTestingBuilder
@@ -83,17 +149,25 @@ public sealed class AppHostResourceRegistrationTests
     /// Returns true when the given annotation transitively references a resource
     /// with the supplied name. Walks the annotation's public properties via
     /// reflection and looks for an <see cref="IResource"/> whose
-    /// <see cref="IResource.Name"/> matches.
+    /// <see cref="IResource.Name"/> matches. The default depth (3) is enough for
+    /// simple <c>WaitFor</c>/<c>WithReference</c> wiring; pass a larger
+    /// <paramref name="maxDepth"/> for chained wiring like
+    /// <c>WithDaprSidecar(sidecar =&gt; sidecar.WithReference(component))</c>,
+    /// which puts the target resource two levels deeper (web → sidecar →
+    /// component annotation → component).
     /// </summary>
-    private static bool AnnotationReferencesResource(IResourceAnnotation annotation, string resourceName)
+    private static bool AnnotationReferencesResource(
+        IResourceAnnotation annotation,
+        string resourceName,
+        int maxDepth = 3)
     {
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        return ReferencesResource(annotation, resourceName, seen, depth: 0);
+        return ReferencesResource(annotation, resourceName, seen, depth: 0, maxDepth);
     }
 
-    private static bool ReferencesResource(object? value, string resourceName, HashSet<object> seen, int depth)
+    private static bool ReferencesResource(object? value, string resourceName, HashSet<object> seen, int depth, int maxDepth)
     {
-        if (value is null || depth > 3)
+        if (value is null || depth > maxDepth)
         {
             return false;
         }
@@ -112,7 +186,7 @@ public sealed class AppHostResourceRegistrationTests
         {
             foreach (var item in enumerable)
             {
-                if (ReferencesResource(item, resourceName, seen, depth + 1))
+                if (ReferencesResource(item, resourceName, seen, depth + 1, maxDepth))
                 {
                     return true;
                 }
@@ -139,7 +213,7 @@ public sealed class AppHostResourceRegistrationTests
                 continue;
             }
 
-            if (ReferencesResource(propertyValue, resourceName, seen, depth + 1))
+            if (ReferencesResource(propertyValue, resourceName, seen, depth + 1, maxDepth))
             {
                 return true;
             }
