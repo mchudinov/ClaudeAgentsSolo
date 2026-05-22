@@ -23,7 +23,8 @@
       "PowerShell(Move-Item *)",
       "PowerShell(& \"$env:TEMP\\\\test-one-step.ps1\")",
       "PowerShell(Test-Path *)",
-      "PowerShell(Copy-Item *)"
+      "PowerShell(Copy-Item *)",
+      "PowerShell(gh project *)"
     ]
   }
 }
