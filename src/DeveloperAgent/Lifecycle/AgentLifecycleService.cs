@@ -26,6 +26,40 @@ public sealed class AgentLifecycleService(
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // ── Startup: validate that the configured repo and project exist ─────
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_gitHubOptions.Owner) &&
+                !string.IsNullOrWhiteSpace(_gitHubOptions.Repository.Name))
+            {
+                var repoExists = await github.RepositoryExistsAsync(stoppingToken);
+                if (!repoExists)
+                    logger.LogWarning(
+                        "Repository {Owner}/{Repo} not found or not accessible on GitHub. " +
+                        "Check GitHub.Owner and GitHub.Repository.Name in configuration.",
+                        _gitHubOptions.Owner, _gitHubOptions.Repository.Name);
+
+                var projectExists = await github.ProjectExistsAsync(stoppingToken);
+                if (!projectExists)
+                    logger.LogWarning(
+                        "Project #{Number} \"{Name}\" not found or not accessible on GitHub. " +
+                        "Check GitHub.Project.Number and GitHub.Project.OwnerType in configuration.",
+                        _gitHubOptions.Project.Number, _gitHubOptions.Project.Name);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (GitHubNotConfiguredException ex)
+        {
+            logger.LogWarning("GitHub not configured — config validation skipped. {Message}", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Startup config validation failed. Message={Message}", ex.Message);
+        }
+
         // ── Startup: log configured repo/project and ready-item count ────────
         try
         {

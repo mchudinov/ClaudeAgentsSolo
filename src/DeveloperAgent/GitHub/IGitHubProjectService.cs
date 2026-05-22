@@ -54,4 +54,14 @@ public interface IGitHubProjectService
     /// Returns the total number of items currently in the Ready state.
     /// </summary>
     Task<int> GetReadyItemCountAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Returns true if the configured repository exists and is accessible on GitHub.
+    /// </summary>
+    Task<bool> RepositoryExistsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Returns true if the configured GitHub Project exists and is accessible on GitHub.
+    /// </summary>
+    Task<bool> ProjectExistsAsync(CancellationToken ct);
 }

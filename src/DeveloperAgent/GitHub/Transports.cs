@@ -85,6 +85,9 @@ internal interface IRestTransport
 
     /// <summary>Finds the first open PR with the given head branch.</summary>
     Task<RestPullRequest?> FindOpenPullRequestByHeadAsync(string owner, string repo, string head, CancellationToken ct);
+
+    /// <summary>Returns true if the repository exists and is accessible; false on 404.</summary>
+    Task<bool> RepositoryExistsAsync(string owner, string repo, CancellationToken ct);
 }
 
 // ── Concrete implementations ──────────────────────────────────────────────────
@@ -249,5 +252,18 @@ internal sealed class OctokitRestTransport : IRestTransport
         var pr = prs.FirstOrDefault();
         if (pr is null) return null;
         return new RestPullRequest(pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged);
+    }
+
+    public async Task<bool> RepositoryExistsAsync(string owner, string repo, CancellationToken ct)
+    {
+        try
+        {
+            await GetClient().Repository.Get(owner, repo).ConfigureAwait(false);
+            return true;
+        }
+        catch (NotFoundException)
+        {
+            return false;
+        }
     }
 }

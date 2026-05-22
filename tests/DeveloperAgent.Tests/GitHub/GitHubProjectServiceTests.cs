@@ -917,6 +917,75 @@ public sealed class GitHubProjectServiceTests
         count.Should().Be(2);
     }
 
+    // ── §D.12: RepositoryExistsAsync ─────────────────────────────────────────
+
+    [Fact]
+    public async Task RepositoryExistsAsync_returns_true_when_repository_found()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        rest.RepositoryExistsAsync("test-org", "test-repo", Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.RepositoryExistsAsync(CancellationToken.None);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RepositoryExistsAsync_returns_false_when_repository_not_found()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        rest.RepositoryExistsAsync("test-org", "test-repo", Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.RepositoryExistsAsync(CancellationToken.None);
+
+        result.Should().BeFalse();
+    }
+
+    // ── §D.13: ProjectExistsAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task ProjectExistsAsync_returns_true_when_project_found_in_graphql_response()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildProjectNodeIdResponse());
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.ProjectExistsAsync(CancellationToken.None);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectExistsAsync_returns_false_when_project_is_null_in_graphql_response()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        var json = """{"data":{"organization":{"projectV2":null}}}""";
+        graphQL.RunQueryAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse(json).RootElement);
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.ProjectExistsAsync(CancellationToken.None);
+
+        result.Should().BeFalse();
+    }
+
     // ── §D.12: TryGetNextReadyItemAsync poll logging ──────────────────────────
 
     [Fact]

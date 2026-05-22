@@ -310,6 +310,28 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             : string.Join("\n\n", allComments);
     }
 
+    public async Task<bool> RepositoryExistsAsync(CancellationToken ct)
+    {
+        EnsureConfigured();
+        return await _rest.RepositoryExistsAsync(_options.Owner, _options.Repository.Name, ct).ConfigureAwait(false);
+    }
+
+    public async Task<bool> ProjectExistsAsync(CancellationToken ct)
+    {
+        EnsureConfigured();
+        var query = _options.Project.OwnerType == "Organization"
+            ? $"query {{ organization(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ id }} }} }}"
+            : $"query {{ user(login: \"{_options.Owner}\") {{ projectV2(number: {_options.Project.Number}) {{ id }} }} }}";
+
+        var result = await _graphQL.RunQueryAsync(query, null, ct).ConfigureAwait(false);
+
+        var projectNode = _options.Project.OwnerType == "Organization"
+            ? result.GetProperty("data").GetProperty("organization").GetProperty("projectV2")
+            : result.GetProperty("data").GetProperty("user").GetProperty("projectV2");
+
+        return projectNode.ValueKind != JsonValueKind.Null;
+    }
+
     public async Task<int> GetReadyItemCountAsync(CancellationToken ct)
     {
         var readyOptionId = await GetOptionIdAsync(_options.States.Ready, ct).ConfigureAwait(false);

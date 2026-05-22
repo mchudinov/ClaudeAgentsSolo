@@ -256,6 +256,80 @@ public sealed class AgentLifecycleServiceTests
     }
 
     [Fact]
+    public async Task Startup_logs_warning_when_repository_does_not_exist()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+        github.GetReadyItemCountAsync(Arg.Any<CancellationToken>()).Returns(0);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+        github.RepositoryExistsAsync(Arg.Any<CancellationToken>()).Returns(false);
+        github.ProjectExistsAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider, logger);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(100);
+
+        logger.Received().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("not found") || o.ToString()!.Contains("Repository")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Startup_logs_warning_when_project_does_not_exist()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+        github.GetReadyItemCountAsync(Arg.Any<CancellationToken>()).Returns(0);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+        github.RepositoryExistsAsync(Arg.Any<CancellationToken>()).Returns(true);
+        github.ProjectExistsAsync(Arg.Any<CancellationToken>()).Returns(false);
+
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider, logger);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(100);
+
+        logger.Received().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("not found") || o.ToString()!.Contains("Project")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
     public async Task Startup_logs_configured_repo_and_project_at_Information()
     {
         SynchronizationContext.SetSynchronizationContext(null);
