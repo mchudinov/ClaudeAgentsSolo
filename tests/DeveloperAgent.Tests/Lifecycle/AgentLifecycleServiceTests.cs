@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute.ExceptionExtensions;
+using NSubstitute.ReceivedExtensions;
 
 namespace DeveloperAgent.Tests.Lifecycle;
 
@@ -41,13 +42,23 @@ public sealed class AgentLifecycleServiceTests
     private static PullRequest MakePr(int number = 99) =>
         new(Number: number, HeadSha: "abc123", HtmlUrl: $"https://github.com/org/repo/pull/{number}");
 
+    private static GitHubOptions DefaultGitHubOptions() => new()
+    {
+        Owner = "test-org",
+        Repository = new RepositoryOptions { Name = "test-repo", DefaultBranch = "main" },
+        Project = new ProjectOptions { Number = 1, Name = "TestProject", OwnerType = "Organization" }
+    };
+
     private AgentLifecycleService BuildService(
         IGitHubProjectService github,
         TaskExecutor taskExecutor,
         ITaskStateStore stateStore,
-        FakeTimeProvider timeProvider) =>
-        new(NullLogger<AgentLifecycleService>.Instance,
+        FakeTimeProvider timeProvider,
+        ILogger<AgentLifecycleService>? logger = null,
+        GitHubOptions? gitHubOptions = null) =>
+        new(logger ?? NullLogger<AgentLifecycleService>.Instance,
             OptionsFactory.Create(Options),
+            OptionsFactory.Create(gitHubOptions ?? DefaultGitHubOptions()),
             github,
             taskExecutor,
             stateStore,
@@ -94,6 +105,7 @@ public sealed class AgentLifecycleServiceTests
         var service = new AgentLifecycleService(
             logger,
             OptionsFactory.Create(Options),
+            OptionsFactory.Create(DefaultGitHubOptions()),
             github,
             taskExecutor,
             stateStore,
@@ -239,6 +251,128 @@ public sealed class AgentLifecycleServiceTests
 
         // State store should be cleared after the crash
         stateStore.Current.Should().BeNull();
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Startup_logs_configured_repo_and_project_at_Information()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+        github.GetReadyItemCountAsync(Arg.Any<CancellationToken>()).Returns(3);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+
+        var gitHubOptions = new GitHubOptions
+        {
+            Owner = "acme-org",
+            Repository = new RepositoryOptions { Name = "my-repo" },
+            Project = new ProjectOptions { Number = 7, Name = "Sprint Board" }
+        };
+
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider, logger, gitHubOptions);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(100);
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("acme-org") && o.ToString()!.Contains("my-repo")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("Sprint Board")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Startup_logs_Ready_item_count()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+        github.GetReadyItemCountAsync(Arg.Any<CancellationToken>()).Returns(5);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider, logger);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(100);
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("Ready") && o.ToString()!.Contains("5")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task No_Ready_item_on_tick_logs_Information_waiting_message()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        var logger = Substitute.For<ILogger<AgentLifecycleService>>();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+        github.GetReadyItemCountAsync(Arg.Any<CancellationToken>()).Returns(0);
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider, logger);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(50);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(100);
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("waiting")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
 
         cts.Cancel();
     }

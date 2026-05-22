@@ -49,4 +49,9 @@ public interface IGitHubProjectService
     /// Used once at startup so the lifecycle loop can log and skip them.
     /// </summary>
     Task<IReadOnlyList<ProjectItem>> GetInFlightItemsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Returns the total number of items currently in the Ready state.
+    /// </summary>
+    Task<int> GetReadyItemCountAsync(CancellationToken ct);
 }

@@ -14,16 +14,51 @@ namespace DeveloperAgent.Lifecycle;
 public sealed class AgentLifecycleService(
     ILogger<AgentLifecycleService> logger,
     IOptions<AgentOptions> agentOptions,
+    IOptions<GitHubOptions> gitHubOptions,
     IGitHubProjectService github,
     TaskExecutor taskExecutor,
     ITaskStateStore taskStateStore,
     TimeProvider timeProvider) : BackgroundService
 {
     private readonly AgentOptions _options = agentOptions.Value;
+    private readonly GitHubOptions _gitHubOptions = gitHubOptions.Value;
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // ── Startup: log configured repo/project and ready-item count ────────
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_gitHubOptions.Owner) &&
+                !string.IsNullOrWhiteSpace(_gitHubOptions.Repository.Name))
+            {
+                logger.LogInformation(
+                    "Repository found: {Owner}/{Repo}",
+                    _gitHubOptions.Owner, _gitHubOptions.Repository.Name);
+
+                logger.LogInformation(
+                    "Project found: #{Number} \"{Name}\"",
+                    _gitHubOptions.Project.Number, _gitHubOptions.Project.Name);
+
+                var readyCount = await github.GetReadyItemCountAsync(stoppingToken);
+                logger.LogInformation("Ready items in project: {Count}", readyCount);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (GitHubNotConfiguredException ex)
+        {
+            logger.LogWarning("GitHub not configured — startup status check skipped. {Message}", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Startup ready-count check failed (likely misconfigured GitHub credentials). " +
+                "Message={Message}", ex.Message);
+        }
+
         // ── Startup: log any items already in-flight (phase-1 skips recovery) ──
         // Tolerate misconfiguration here so dotnet run boots even without real GitHub
         // credentials. The per-tick loop below catches its own exceptions and degrades
@@ -93,7 +128,7 @@ public sealed class AgentLifecycleService(
 
             if (item is null)
             {
-                logger.LogDebug("No ready item on this tick.");
+                logger.LogInformation("DeveloperAgent is waiting for Ready items to work on.");
                 continue;
             }
 

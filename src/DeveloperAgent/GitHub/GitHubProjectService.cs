@@ -305,6 +305,13 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             : string.Join("\n\n", allComments);
     }
 
+    public async Task<int> GetReadyItemCountAsync(CancellationToken ct)
+    {
+        var readyOptionId = await GetOptionIdAsync(_options.States.Ready, ct).ConfigureAwait(false);
+        var items = await QueryProjectItemsAsync(readyOptionId, ct).ConfigureAwait(false);
+        return items.Count;
+    }
+
     public async Task<IReadOnlyList<ProjectItem>> GetInFlightItemsAsync(CancellationToken ct)
     {
         var inProgressOptionId = await GetOptionIdAsync(_options.States.InProgress, ct).ConfigureAwait(false);

@@ -870,6 +870,51 @@ public sealed class GitHubProjectServiceTests
         await act.Should().ThrowAsync<GitHubNotConfiguredException>();
     }
 
+    // ── §D.11: GetReadyItemCountAsync ─────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReadyItemCountAsync_returns_count_of_ready_items()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        var twoReadyJson = """
+            {
+              "data": {
+                "organization": {
+                  "projectV2": {
+                    "items": {
+                      "nodes": [
+                        {
+                          "id": "pvitem-1",
+                          "fieldValues": { "nodes": [ { "optionId": "opt-ready", "field": { "name": "Status" } } ] },
+                          "content": { "__typename": "Issue", "id": "n1", "number": 1, "title": "Task A", "body": "" }
+                        },
+                        {
+                          "id": "pvitem-2",
+                          "fieldValues": { "nodes": [ { "optionId": "opt-ready", "field": { "name": "Status" } } ] },
+                          "content": { "__typename": "Issue", "id": "n2", "number": 2, "title": "Task B", "body": "" }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse(twoReadyJson).RootElement);
+
+        var svc = CreateService(graphQL, rest);
+
+        var count = await svc.GetReadyItemCountAsync(CancellationToken.None);
+
+        count.Should().Be(2);
+    }
+
     [Fact]
     public async Task TryGetNextReadyItemAsync_item_with_unknown_optionId_is_excluded()
     {
