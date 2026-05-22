@@ -161,6 +161,11 @@ internal sealed class GitHubProjectService : IGitHubProjectService
     {
         var readyOptionId = await GetOptionIdAsync(_options.States.Ready, ct).ConfigureAwait(false);
         var items = await QueryProjectItemsAsync(readyOptionId, ct).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Polling project #{ProjectNumber} ({Owner}): {Count} Ready item(s) found.",
+            _options.Project.Number, _options.Owner, items.Count);
+
         return items.FirstOrDefault(i => i.State == ProjectState.Ready);
     }
 

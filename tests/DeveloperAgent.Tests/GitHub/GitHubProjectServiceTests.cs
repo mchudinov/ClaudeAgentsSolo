@@ -2,6 +2,7 @@ using System.Text.Json;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -19,14 +20,15 @@ public sealed class GitHubProjectServiceTests
     private static GitHubProjectService CreateService(
         IGraphQLTransport graphQL,
         IRestTransport rest,
-        GitHubOptions? options = null)
+        GitHubOptions? options = null,
+        ILogger<GitHubProjectService>? logger = null)
     {
         options ??= DefaultOptions();
         return new GitHubProjectService(
             graphQL,
             rest,
             Options.Create(options),
-            NullLogger<GitHubProjectService>.Instance);
+            logger ?? NullLogger<GitHubProjectService>.Instance);
     }
 
     private static GitHubOptions DefaultOptions() => new()
@@ -913,6 +915,61 @@ public sealed class GitHubProjectServiceTests
         var count = await svc.GetReadyItemCountAsync(CancellationToken.None);
 
         count.Should().Be(2);
+    }
+
+    // ── §D.12: TryGetNextReadyItemAsync poll logging ──────────────────────────
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_logs_project_owner_number_and_item_count()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+        var logger = Substitute.For<ILogger<GitHubProjectService>>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildItemsResponse(includeIssue: true));
+
+        var svc = CreateService(graphQL, rest, logger: logger);
+
+        await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("test-org") &&
+                                o.ToString()!.Contains("1") &&
+                                o.ToString()!.Contains("1")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_logs_zero_count_when_no_ready_items()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+        var logger = Substitute.For<ILogger<GitHubProjectService>>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse("""{"data":{"organization":{"projectV2":{"items":{"nodes":[]}}}}}""").RootElement);
+
+        var svc = CreateService(graphQL, rest, logger: logger);
+
+        await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        logger.Received().Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("test-org") &&
+                                o.ToString()!.Contains("0")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
     }
 
     [Fact]
