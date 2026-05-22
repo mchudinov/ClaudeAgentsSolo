@@ -25,7 +25,13 @@
       "PowerShell(Test-Path *)",
       "PowerShell(Copy-Item *)",
       "PowerShell(gh project *)",
-      "PowerShell(Remove-Item *)"
+      "PowerShell(Remove-Item *)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "PowerShell(git checkout *)",
+      "PowerShell(git branch --show-current; git status -s; \"--- commits on branch ---\"; git log origin/main..HEAD --oneline; \"--- main untouched ---\"; git log main --oneline -1; \"--- diff stat ---\"; git diff origin/main..HEAD --stat)",
+      "PowerShell(gh pr *)",
+      "PowerShell(git *)"
     ]
   }
 }
