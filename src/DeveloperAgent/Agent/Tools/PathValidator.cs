@@ -1,9 +1,11 @@
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 
 namespace DeveloperAgent.Agent.Tools;
 
 /// <summary>
-/// Validates and resolves file paths for file tools to ensure they stay within the workspace root.
+/// Validates and resolves file paths for file tools to ensure they stay within the workspace root
+/// and clear of <see cref="IPathDenyPolicy"/> deny rules.
 /// </summary>
 internal static class PathValidator
 {
@@ -37,5 +39,41 @@ internal static class PathValidator
         }
 
         return resolved;
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="workspaceRelative"/> against <paramref name="ws"/> and
+    /// runs the path through <paramref name="denyPolicy"/>. Returns <see langword="true"/>
+    /// on allow with the absolute path in <paramref name="resolved"/>; on deny returns
+    /// <see langword="false"/> with the human-readable reason in <paramref name="denyReason"/>.
+    /// </summary>
+    /// <remarks>
+    /// This overload does not throw on workspace-escape — the deny policy reports it
+    /// alongside the configurable pattern rules so callers can return a structured
+    /// <see cref="ToolResult.Denied(string)"/>.
+    /// </remarks>
+    internal static bool TryResolve(
+        string workspaceRelative,
+        TaskWorkspace ws,
+        IPathDenyPolicy denyPolicy,
+        out string resolved,
+        out string denyReason)
+    {
+        // Path.GetFullPath collapses ".." and produces an OS-native absolute path.
+        // We deliberately do this even for already-absolute inputs so that the deny
+        // policy sees a canonical form.
+        var absolute = Path.GetFullPath(Path.Combine(ws.RepoRoot, workspaceRelative));
+
+        var result = denyPolicy.Check(absolute, ws.RepoRoot);
+        if (result.IsDenied)
+        {
+            resolved = string.Empty;
+            denyReason = result.Reason ?? "path denied";
+            return false;
+        }
+
+        resolved = absolute;
+        denyReason = string.Empty;
+        return true;
     }
 }

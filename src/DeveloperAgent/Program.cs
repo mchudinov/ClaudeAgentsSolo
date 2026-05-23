@@ -4,6 +4,7 @@ using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
@@ -80,6 +81,10 @@ public class Program
                 .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
                 .ValidateOnStart();
 
+            builder.Services
+                .AddOptions<SandboxOptions>()
+                .Bind(builder.Configuration.GetSection("Sandbox"));
+
             // ── Secret resolution — eager at startup ──────────────────────────────
             builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();
             builder.Services.AddSingleton<SecretsBundle>(sp =>
@@ -104,9 +109,11 @@ public class Program
             // is internal), so DI reflection cannot see them. Register via factory lambdas
             // which execute inside this assembly and can access internal members.
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
+            builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
+                sp.GetRequiredService<IPathDenyPolicy>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();

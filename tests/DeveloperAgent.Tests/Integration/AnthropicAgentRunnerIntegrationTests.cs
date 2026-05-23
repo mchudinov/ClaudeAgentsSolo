@@ -7,6 +7,7 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Hosting;
@@ -94,13 +95,18 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // ShellRun and git tools are intentionally omitted so the agent is limited
         // to file writes and PR creation, keeping the test predictable and cheap.
         var processRunner = new DefaultProcessRunner();
+        var denyPolicy = new PathDenyPolicy(Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+        }));
         var sandbox = new CommandSandbox(
-            processRunner, workspaceOpts, NullLogger<CommandSandbox>.Instance);
+            processRunner, workspaceOpts, denyPolicy, NullLogger<CommandSandbox>.Instance);
 
         ITool[] tools =
         [
-            new WriteFileTool(),
-            new ReadFileTool(),
+            new WriteFileTool(denyPolicy),
+            new ReadFileTool(denyPolicy),
             new CreatePullRequestTool(fakeGitHub),
             new CommentOnItemTool(fakeGitHub),
         ];
