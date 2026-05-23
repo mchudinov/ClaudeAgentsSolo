@@ -2,16 +2,25 @@ using System.Text.Json.Nodes;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
+using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Tests.Agent.Tools;
 
 /// <summary>Unit tests for <see cref="WriteFileTool"/>.</summary>
 public sealed class WriteFileToolTests : IDisposable
 {
+    private static readonly IPathDenyPolicy NoOpDeny =
+        new PathDenyPolicy(Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+        }));
+
     private readonly string _root;
     private readonly ToolContext _ctx;
-    private readonly WriteFileTool _tool = new();
+    private readonly WriteFileTool _tool = new(NoOpDeny);
 
     public WriteFileToolTests()
     {

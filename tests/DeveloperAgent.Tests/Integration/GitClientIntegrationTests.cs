@@ -1,4 +1,5 @@
 using DeveloperAgent.Configuration;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,9 +32,15 @@ public sealed class GitClientIntegrationTests
         var githubOpts = Options.Create(new GitHubOptions());
         var secrets = new SecretsBundle("", "");
         var processRunner = new DefaultProcessRunner();
+        var denyPolicy = new PathDenyPolicy(Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+        }));
         var sandbox = new CommandSandbox(
             processRunner,
             workspaceOpts,
+            denyPolicy,
             NullLogger<CommandSandbox>.Instance);
 
         return new GitClient(
