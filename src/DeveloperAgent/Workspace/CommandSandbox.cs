@@ -17,6 +17,7 @@ public sealed class CommandSandbox : ICommandSandbox
     private readonly IProcessRunner _runner;
     private readonly IOptions<WorkspaceOptions> _options;
     private readonly IPathDenyPolicy _pathDenyPolicy;
+    private readonly ICommandDenyPolicy _commandDenyPolicy;
     private readonly ILogger<CommandSandbox> _logger;
 
     /// <summary>
@@ -28,11 +29,13 @@ public sealed class CommandSandbox : ICommandSandbox
         IProcessRunner runner,
         IOptions<WorkspaceOptions> options,
         IPathDenyPolicy pathDenyPolicy,
+        ICommandDenyPolicy commandDenyPolicy,
         ILogger<CommandSandbox> logger)
     {
         _runner = runner;
         _options = options;
         _pathDenyPolicy = pathDenyPolicy;
+        _commandDenyPolicy = commandDenyPolicy;
         _logger = logger;
     }
 
@@ -56,22 +59,20 @@ public sealed class CommandSandbox : ICommandSandbox
         // ── 3. Strip leading -c <kv> pairs (git auth header pattern) ────────
         var strippedArgv = StripLeadingConfigPairs(argv);
 
-        // ── 4. Prefix-match against allowlist ───────────────────────────────
+        // ── 4. Deny policy — runs BEFORE the allowlist so deny wins ──────────
+        // A command on the allowlist can still hit a deny rule (e.g. "git" is
+        // allowed but "git push --force" is denied). The policy reports the
+        // matching rule name so the violation message points at the right rule.
+        var denyResult = _commandDenyPolicy.Check(strippedArgv);
+        if (denyResult.IsDenied)
+            throw new SandboxViolationException(
+                denyResult.Reason ?? $"command is denied by sandbox policy: rule '{denyResult.RuleName}'");
+
+        // ── 5. Prefix-match against allowlist ───────────────────────────────
         var matchedEntry = FindAllowlistEntry(strippedArgv, opts.AllowedCommands);
         if (matchedEntry is null)
             throw new SandboxViolationException(
                 $"Command '{commandLine}' does not match any entry in AllowedCommands.");
-
-        // ── 5. Special-case: block git push --force / -f ─────────────────────
-        if (matchedEntry == "git push")
-        {
-            foreach (var arg in strippedArgv.Skip(2)) // skip "git" "push"
-            {
-                if (arg is "--force" or "-f")
-                    throw new SandboxViolationException(
-                        "git push --force is not permitted.");
-            }
-        }
 
         // ── 6. Log invocation (no secret values) ─────────────────────────────
         var outputHash = ComputeInvocationId(commandLine);

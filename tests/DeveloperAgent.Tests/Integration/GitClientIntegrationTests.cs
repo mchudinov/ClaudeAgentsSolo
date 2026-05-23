@@ -32,15 +32,21 @@ public sealed class GitClientIntegrationTests
         var githubOpts = Options.Create(new GitHubOptions());
         var secrets = new SecretsBundle("", "");
         var processRunner = new DefaultProcessRunner();
-        var denyPolicy = new PathDenyPolicy(Options.Create(new SandboxOptions
+        var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
             SecretFileRegexes = [],
-        }));
+            // Integration tests run real `git push` — drop the force-push deny rules
+            // so we keep verifying the legitimate push path and not the sandbox itself.
+            DeniedCommands = [],
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
         var sandbox = new CommandSandbox(
             processRunner,
             workspaceOpts,
             denyPolicy,
+            commandDenyPolicy,
             NullLogger<CommandSandbox>.Instance);
 
         return new GitClient(

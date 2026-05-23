@@ -1,5 +1,6 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Sandbox;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -50,8 +51,17 @@ public sealed class GitHubProjectServiceIntegrationTests
 
         var secrets = new SecretsBundle(AnthropicApiKey: string.Empty, GitHubToken: token);
 
-        var graphQL = new OctokitGraphQLTransport(options, secrets);
-        var rest    = new OctokitRestTransport(options, secrets);
+        // Integration tests exercise the real api.github.com — make the egress
+        // handler permissive enough to allow that host (the production default
+        // already does, but spelling it out keeps the test independent of
+        // SandboxOptions defaults). Each transport gets its own handler instance:
+        // the handler stores an InnerHandler on itself, so sharing one across
+        // two transports would cause one's HttpClient pipeline to mutate the other.
+        static HostAllowlistHandler NewEgress() =>
+            new(new[] { "api.github.com", "*.githubusercontent.com" });
+
+        var graphQL = new OctokitGraphQLTransport(options, secrets, NewEgress());
+        var rest    = new OctokitRestTransport(options, secrets, NewEgress());
 
         return new GitHubProjectService(
             graphQL,

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeveloperAgent.Configuration;
+using DeveloperAgent.Sandbox;
 using Microsoft.Extensions.Options;
 using Octokit;
+using Octokit.Internal;
 using OctokitGraphQL = Octokit.GraphQL;
 
 namespace DeveloperAgent.GitHub;
@@ -97,15 +99,20 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 {
     private readonly IOptions<GitHubOptions> _options;
     private readonly SecretsBundle _secrets;
+    private readonly HostAllowlistHandler _egressHandler;
 
     // Lazy so construction doesn't fail on missing config at startup
     private OctokitGraphQL.Connection? _connection;
     private readonly object _lock = new();
 
-    public OctokitGraphQLTransport(IOptions<GitHubOptions> options, SecretsBundle secrets)
+    public OctokitGraphQLTransport(
+        IOptions<GitHubOptions> options,
+        SecretsBundle secrets,
+        HostAllowlistHandler egressHandler)
     {
         _options = options;
         _secrets = secrets;
+        _egressHandler = egressHandler;
     }
 
     private OctokitGraphQL.Connection GetConnection()
@@ -116,9 +123,18 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
             if (_connection is not null) return _connection;
             var version = typeof(OctokitGraphQLTransport).Assembly
                 .GetName().Version?.ToString(3) ?? "1.0.0";
+
+            // Route requests through HostAllowlistHandler so non-allowlisted hosts
+            // throw SandboxViolationException. The inner HttpClientHandler is the
+            // standard System.Net.Http transport — we do NOT add proxy / cache
+            // behavior here, only the egress filter.
+            _egressHandler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(_egressHandler);
+
             _connection = new OctokitGraphQL.Connection(
                 new OctokitGraphQL.ProductHeaderValue("DeveloperAgent", version),
-                _secrets.GitHubToken);
+                new OctokitGraphQL.Internal.InMemoryCredentialStore(_secrets.GitHubToken),
+                httpClient);
             return _connection;
         }
     }
@@ -152,14 +168,19 @@ internal sealed class OctokitRestTransport : IRestTransport
 {
     private readonly IOptions<GitHubOptions> _options;
     private readonly SecretsBundle _secrets;
+    private readonly HostAllowlistHandler _egressHandler;
 
     private GitHubClient? _client;
     private readonly object _lock = new();
 
-    public OctokitRestTransport(IOptions<GitHubOptions> options, SecretsBundle secrets)
+    public OctokitRestTransport(
+        IOptions<GitHubOptions> options,
+        SecretsBundle secrets,
+        HostAllowlistHandler egressHandler)
     {
         _options = options;
         _secrets = secrets;
+        _egressHandler = egressHandler;
     }
 
     private GitHubClient GetClient()
@@ -170,11 +191,27 @@ internal sealed class OctokitRestTransport : IRestTransport
             if (_client is not null) return _client;
             var version = typeof(OctokitRestTransport).Assembly
                 .GetName().Version?.ToString(3) ?? "1.0.0";
-            var client = new GitHubClient(new Octokit.ProductHeaderValue("DeveloperAgent", version))
+
+            // Route the underlying IConnection through HostAllowlistHandler so
+            // non-allowlisted hosts throw SandboxViolationException before they
+            // leave the process. Octokit's HttpClientAdapter takes a factory
+            // that returns the HttpMessageHandler chain — we hand it our
+            // egress filter, which itself defers to HttpClientHandler for
+            // the actual transport.
+            var httpClient = new HttpClientAdapter(() =>
+            {
+                _egressHandler.InnerHandler = new HttpClientHandler();
+                return _egressHandler;
+            });
+
+            var connection = new Octokit.Connection(
+                new Octokit.ProductHeaderValue("DeveloperAgent", version),
+                httpClient)
             {
                 Credentials = new Credentials(_secrets.GitHubToken)
             };
-            _client = client;
+
+            _client = new GitHubClient(connection);
             return _client;
         }
     }

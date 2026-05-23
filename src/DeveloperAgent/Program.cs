@@ -110,11 +110,20 @@ public class Program
             // which execute inside this assembly and can access internal members.
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
             builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
+            builder.Services.AddSingleton<ICommandDenyPolicy, CommandDenyPolicy>();
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
                 sp.GetRequiredService<IPathDenyPolicy>(),
+                sp.GetRequiredService<ICommandDenyPolicy>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
+            // HostAllowlistHandler is registered as a transient so callers that opt into
+            // egress filtering (named HttpClients, future MCP transports) can pull it
+            // from DI. The existing Octokit / Anthropic SDK clients construct their own
+            // HttpClient internally and do not yet flow through IHttpClientFactory —
+            // wiring them up is tracked as a follow-up; for now the handler is available
+            // for the next service that uses HttpClientFactory to consume.
+            builder.Services.AddTransient<HostAllowlistHandler>();
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
 
