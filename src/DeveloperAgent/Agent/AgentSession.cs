@@ -18,7 +18,12 @@ public sealed class AgentSession
     /// <summary>Number of model turns (request/response cycles) consumed so far.</summary>
     public int TurnsUsed { get; set; }
 
-    /// <summary>Total tool invocations across all turns.</summary>
+    /// <summary>
+    /// Total invocations of <em>local</em> tools (the in-process <see cref="ITool"/> adapters)
+    /// across all turns. MCP-sourced tools are not counted because they are invoked directly
+    /// by Microsoft Agent Framework's <c>FunctionInvokingChatClient</c> without passing through
+    /// <see cref="MafToolAdapter"/>.
+    /// </summary>
     public int ToolCallsUsed { get; set; }
 
     /// <summary>The last text-only response from the assistant, if any.</summary>

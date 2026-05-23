@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
@@ -49,13 +50,39 @@ public sealed class AnthropicAgentRunnerTests
     private static AnthropicAgentRunner BuildRunner(
         IChatClient chatClient,
         IEnumerable<ITool>? tools = null,
-        int hardCap = 40) =>
+        int hardCap = 40,
+        IMcpToolSource? mcpToolSource = null) =>
         new(
             new StubChatClientFactory(chatClient),
             MakePersonaLoader(),
             MakeOptions(hardCap),
             tools ?? [],
-            NullLogger<AnthropicAgentRunner>.Instance);
+            NullLogger<AnthropicAgentRunner>.Instance,
+            mcpToolSource);
+
+    private sealed class StubMcpToolSource : IMcpToolSource
+    {
+        private readonly IReadOnlyList<AITool> _tools;
+        public int Calls { get; private set; }
+        public StubMcpToolSource(IReadOnlyList<AITool> tools) => _tools = tools;
+        public Task<IReadOnlyList<AITool>> GetToolsAsync(CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult(_tools);
+        }
+    }
+
+    private sealed class FakeMcpAITool : AIFunction
+    {
+        private static readonly JsonElement EmptyObject = JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        public FakeMcpAITool(string name) { Name = name; }
+        public override string Name { get; }
+        public override string Description => "fake-mcp-tool";
+        public override JsonElement JsonSchema => EmptyObject;
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments, CancellationToken cancellationToken)
+            => ValueTask.FromResult<object?>("ok");
+    }
 
     // ── Chat response builders ───────────────────────────────────────────────
 
@@ -256,6 +283,62 @@ public sealed class AnthropicAgentRunnerTests
         result.Outcome.Should().Be(AgentRunOutcome.Completed);
         result.PullRequest.Should().Be(expectedPr);
         prTool.Calls.Should().Be(1);
+    }
+
+    // ── Test: MCP tools merged into the agent's tool list ───────────────────
+
+    [Fact]
+    public async Task RunAsync_appends_McpToolSource_tools_to_local_tools()
+    {
+        var localTool = new FakeTool { Name = "read_file" };
+        var mcpTools = new List<AITool> { new FakeMcpAITool("gh_search"), new FakeMcpAITool("ctx_lookup") };
+        var mcpSource = new StubMcpToolSource(mcpTools);
+
+        ChatOptions? observedOptions = null;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                observedOptions = ci.Arg<ChatOptions>();
+                return Task.FromResult(TextResponse("done"));
+            });
+
+        var runner = BuildRunner(chatClient, [localTool], mcpToolSource: mcpSource);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        mcpSource.Calls.Should().Be(1, "the runner must ask the MCP source for tools each run");
+        observedOptions.Should().NotBeNull();
+        var names = observedOptions!.Tools!
+            .OfType<AIFunction>()
+            .Select(t => t.Name)
+            .ToList();
+        names.Should().Contain("read_file");
+        names.Should().Contain("gh_search");
+        names.Should().Contain("ctx_lookup");
+        names.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task RunAsync_works_when_McpToolSource_is_null()
+    {
+        var localTool = new FakeTool { Name = "read_file" };
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(TextResponse("done")));
+
+        var runner = BuildRunner(chatClient, [localTool], mcpToolSource: null);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
     }
 
     // ── Test: API error from chat client ─────────────────────────────────────

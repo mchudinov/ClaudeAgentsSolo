@@ -1,3 +1,4 @@
+using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Workspace;
@@ -33,6 +34,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
     private readonly PersonaLoader _personaLoader;
     private readonly AgentOptions _options;
     private readonly IReadOnlyList<ITool> _tools;
+    private readonly IMcpToolSource? _mcpToolSource;
     private readonly ILogger<AnthropicAgentRunner> _logger;
     private readonly ILoggerFactory _loggerFactory;
 
@@ -42,12 +44,14 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         IOptions<AgentOptions> options,
         IEnumerable<ITool> tools,
         ILogger<AnthropicAgentRunner> logger,
+        IMcpToolSource? mcpToolSource = null,
         ILoggerFactory? loggerFactory = null)
     {
         _chatClientFactory = chatClientFactory;
         _personaLoader = personaLoader;
         _options = options.Value;
         _tools = [..tools];
+        _mcpToolSource = mcpToolSource;
         _logger = logger;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
     }
@@ -63,6 +67,16 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         IList<AITool> mafTools = _tools
             .Select(t => (AITool)new MafToolAdapter(t, context))
             .ToList();
+
+        // Append MCP-sourced tools (GitHub MCP, Context7 MCP) when configured. These come
+        // through as Microsoft.Extensions.AI.AIFunction-derived McpClientTool instances so
+        // no adapter is needed. ToolCallsUsed counts local tools only — see AgentSession.
+        if (_mcpToolSource is not null)
+        {
+            var mcpTools = await _mcpToolSource.GetToolsAsync(ct).ConfigureAwait(false);
+            foreach (var mcpTool in mcpTools)
+                mafTools.Add(mcpTool);
+        }
 
         // Build the chat client; wrap it with the turn-counting decorator BEFORE handing
         // it to ChatClientAgent (which itself wraps with FunctionInvokingChatClient).
