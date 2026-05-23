@@ -2,17 +2,26 @@ using System.Text.Json.Nodes;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
+using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Tests.Agent.Tools;
 
 /// <summary>Unit tests for <see cref="ReadFileTool"/>.</summary>
 public sealed class ReadFileToolTests : IDisposable
 {
+    private static readonly IPathDenyPolicy NoOpDeny =
+        new PathDenyPolicy(Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+        }));
+
     private readonly string _root;
     private readonly TaskWorkspace _ws;
     private readonly ToolContext _ctx;
-    private readonly ReadFileTool _tool = new();
+    private readonly ReadFileTool _tool = new(NoOpDeny);
 
     public ReadFileToolTests()
     {

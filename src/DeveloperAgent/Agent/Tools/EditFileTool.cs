@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DeveloperAgent.Sandbox;
 
 namespace DeveloperAgent.Agent.Tools;
 
@@ -9,6 +10,13 @@ namespace DeveloperAgent.Agent.Tools;
 /// </summary>
 public sealed class EditFileTool : ITool
 {
+    private readonly IPathDenyPolicy _denyPolicy;
+
+    public EditFileTool(IPathDenyPolicy denyPolicy)
+    {
+        _denyPolicy = denyPolicy;
+    }
+
     public string Name => "edit_file";
     public string Description => "Replace exactly one occurrence of old_string with new_string in a file. Fails if old_string is absent or appears more than once.";
 
@@ -44,15 +52,8 @@ public sealed class EditFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        string resolved;
-        try
-        {
-            resolved = PathValidator.ResolveOrThrow(path, context.Workspace);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return new ToolResult(true, ex.Message);
-        }
+        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+            return ToolResult.Denied(deny);
 
         if (!File.Exists(resolved))
             return new ToolResult(true, $"File not found: {path}");

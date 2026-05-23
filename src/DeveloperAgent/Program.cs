@@ -1,10 +1,14 @@
+using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Sandbox;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
+using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
@@ -77,6 +81,10 @@ public class Program
                 .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
                 .ValidateOnStart();
 
+            builder.Services
+                .AddOptions<SandboxOptions>()
+                .Bind(builder.Configuration.GetSection("Sandbox"));
+
             // ── Secret resolution — eager at startup ──────────────────────────────
             builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();
             builder.Services.AddSingleton<SecretsBundle>(sp =>
@@ -101,9 +109,11 @@ public class Program
             // is internal), so DI reflection cannot see them. Register via factory lambdas
             // which execute inside this assembly and can access internal members.
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
+            builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
+                sp.GetRequiredService<IPathDenyPolicy>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
@@ -123,11 +133,26 @@ public class Program
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
             builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
 
+            // ── Observability ─────────────────────────────────────────────────────
+            // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
+            // it to the OTel metrics pipeline so its instruments flow to whatever
+            // exporter ServiceDefaults wires up (OTEL_EXPORTER_OTLP_ENDPOINT etc).
+            builder.Services.AddSingleton<AgentMetrics>();
+            builder.Services.AddOpenTelemetry()
+                .WithMetrics(m => m.AddMeter(AgentMetrics.MeterName));
+
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
             builder.Services.AddSingleton<ITaskStateStore, InMemoryTaskStateStore>();
             builder.Services.AddSingleton<TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
+
+            // ── Dapr Actors ───────────────────────────────────────────────────────
+            // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
+            // runtime knows about it and the Dapr sidecar can invoke instances.
+            // Step-11 will wire ITaskStateStore to call this actor; for now the
+            // registration alone is enough for the actor handlers to be served.
+            builder.Services.AddActors(opt => opt.Actors.RegisterActor<ProgrammingTaskActor>());
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
@@ -156,6 +181,10 @@ public class Program
 
             app.MapRazorComponents<DeveloperAgent.Components.App>()
                 .AddInteractiveServerRenderMode();
+
+            // Step-10: expose the Dapr Actors HTTP endpoints
+            // (dapr/config, actors/{type}/{id}/method/..., reminders, timers).
+            app.MapActorsHandlers();
 
             app.MapGet("/info", (ITaskStateStore taskStateStore) =>
             {
