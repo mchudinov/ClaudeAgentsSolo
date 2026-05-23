@@ -1,7 +1,9 @@
+using System.Diagnostics.Metrics;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -53,7 +55,8 @@ public sealed class TaskExecutorTests
         IGitClient gitClient,
         IAgentRunner agentRunner,
         ITaskStateStore stateStore,
-        FakeTimeProvider timeProvider) =>
+        FakeTimeProvider timeProvider,
+        AgentMetrics? metrics = null) =>
         new(NullLogger<TaskExecutor>.Instance,
             Options.AsOptions(),
             github,
@@ -61,7 +64,8 @@ public sealed class TaskExecutorTests
             gitClient,
             agentRunner,
             stateStore,
-            timeProvider);
+            timeProvider,
+            metrics ?? new AgentMetrics());
 
     // ── Tests ─────────────────────────────────────────────────────────────────
 
@@ -421,4 +425,207 @@ file static class AgentOptionsExtensions
 {
     public static IOptions<AgentOptions> AsOptions(this AgentOptions options) =>
         Microsoft.Extensions.Options.Options.Create(options);
+}
+
+/// <summary>
+/// Verifies that <see cref="TaskExecutor"/> emits to <see cref="AgentMetrics"/>
+/// at the exact phase boundaries listed in
+/// <c>docs/plans/07-phase-2-outline.md §P2-N</c>.
+/// </summary>
+public sealed class TaskExecutorMetricsTests
+{
+    private static readonly AgentOptions Options = new()
+    {
+        PollIntervalSeconds = 10,
+        ReviewPollIntervalSeconds = 10,
+        MaxModelTurnsHardCap = 40
+    };
+
+    private static ProjectItem MakeItem(string id = "item-1") =>
+        new(
+            ProjectItemId: id,
+            ContentNodeId: $"content-{id}",
+            ContentNumber: 42,
+            Title: "Add feature X",
+            BodyMarkdown: "Implement feature X",
+            State: ProjectState.Ready);
+
+    private static TaskWorkspace MakeWorkspace(string itemId = "item-1") =>
+        new(ProjectItemId: itemId, BranchName: "agent/add-feature-x-abcd1234",
+            RepoRoot: "/workspace/item-1/repo", DefaultBranch: "main");
+
+    private static PullRequest MakePr(int number = 99) =>
+        new(Number: number, HeadSha: "abc123", HtmlUrl: $"https://github.com/org/repo/pull/{number}");
+
+    private static PullRequestStatus MergedApproved(int prNumber = 99) =>
+        new(prNumber, PullRequestReviewState.Approved, ChecksGreen: true, Merged: true, HeadSha: "abc123");
+
+    private static AgentRunResult Completed(PullRequest pr, int toolCalls = 7) =>
+        new(AgentRunOutcome.Completed, pr, TurnsUsed: 4, ToolCallsUsed: toolCalls, TerminationReason: null);
+
+    [Fact]
+    public async Task Happy_path_emits_tasks_completed_tool_calls_and_time_to_pr()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        using var metrics = new AgentMetrics();
+
+        var item = MakeItem();
+        var ws = MakeWorkspace();
+        var pr = MakePr();
+
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ws);
+        // RunAsync takes some "modeled" wall clock; the test advances the FakeTimeProvider
+        // between Ready and PR open implicitly via the periodic timer.  Here we only need
+        // the run to return a PR; the executor reads the clock around the PR-open transition.
+        agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                // Simulate 30s elapsed during the agent run by advancing the fake clock.
+                timeProvider.Advance(TimeSpan.FromSeconds(30));
+                return Completed(pr, toolCalls: 7);
+            });
+        github.GetPullRequestStatusAsync(pr.Number, Arg.Any<CancellationToken>())
+            .Returns(MergedApproved(pr.Number));
+
+        // Listen to all four instruments emitted in the happy path
+        var tasksCompleted = new List<long>();
+        var toolCalls = new List<long>();
+        var timeToPr = new List<double>();
+        var passRate = new List<double>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (!ReferenceEquals(instrument.Meter, metrics.Meter)) return;
+                if (instrument.Name is "agent.tasks.completed"
+                                    or "agent.tool_calls.per_task"
+                                    or "agent.time_to_pr"
+                                    or "agent.build_test.pass_rate")
+                {
+                    l.EnableMeasurementEvents(instrument);
+                }
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((inst, value, _, _) =>
+        {
+            if (inst.Name == "agent.tasks.completed") tasksCompleted.Add(value);
+            else if (inst.Name == "agent.tool_calls.per_task") toolCalls.Add(value);
+        });
+        listener.SetMeasurementEventCallback<double>((inst, value, _, _) =>
+        {
+            if (inst.Name == "agent.time_to_pr") timeToPr.Add(value);
+            else if (inst.Name == "agent.build_test.pass_rate") passRate.Add(value);
+        });
+        listener.Start();
+
+        var executor = new TaskExecutor(
+            NullLogger<TaskExecutor>.Instance,
+            Options.AsOptions(),
+            github,
+            workspaceMgr,
+            gitClient,
+            agentRunner,
+            stateStore,
+            timeProvider,
+            metrics);
+
+        using var cts = new CancellationTokenSource();
+        var runTask = executor.RunAsync(item, cts.Token);
+
+        // Release the review wait timer
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+        var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+        result.Outcome.Should().Be(TaskOutcome.Done);
+
+        // tasks.completed: +1 on the Done branch
+        tasksCompleted.Should().ContainSingle().Which.Should().Be(1);
+
+        // tool_calls.per_task: recorded once with the run's ToolCallsUsed value
+        toolCalls.Should().ContainSingle().Which.Should().Be(7);
+
+        // time_to_pr: 30s of agent-run time was simulated between Acquired and PullRequestOpen
+        timeToPr.Should().ContainSingle().Which.Should().BeApproximately(30d, 0.5d);
+
+        // pass_rate observable gauge: pull a measurement so we know it reflects 1 success / 1 total
+        listener.RecordObservableInstruments();
+        passRate.Should().NotBeEmpty();
+        passRate[^1].Should().Be(1d);
+    }
+
+    [Fact]
+    public async Task Failed_run_emits_tool_calls_and_pass_rate_but_not_tasks_completed_or_time_to_pr()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+        using var metrics = new AgentMetrics();
+
+        var item = MakeItem();
+        var ws = MakeWorkspace();
+
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ws);
+        agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentRunResult(AgentRunOutcome.HardCapReached, null, 40, 23, "Reached 40 turns"));
+
+        var tasksCompleted = new List<long>();
+        var toolCalls = new List<long>();
+        var timeToPr = new List<double>();
+        var passRate = new List<double>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (!ReferenceEquals(instrument.Meter, metrics.Meter)) return;
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((inst, value, _, _) =>
+        {
+            if (inst.Name == "agent.tasks.completed") tasksCompleted.Add(value);
+            else if (inst.Name == "agent.tool_calls.per_task") toolCalls.Add(value);
+        });
+        listener.SetMeasurementEventCallback<double>((inst, value, _, _) =>
+        {
+            if (inst.Name == "agent.time_to_pr") timeToPr.Add(value);
+            else if (inst.Name == "agent.build_test.pass_rate") passRate.Add(value);
+        });
+        listener.Start();
+
+        var executor = new TaskExecutor(
+            NullLogger<TaskExecutor>.Instance,
+            Options.AsOptions(),
+            github,
+            workspaceMgr,
+            gitClient,
+            agentRunner,
+            stateStore,
+            timeProvider,
+            metrics);
+
+        var result = await executor.RunAsync(item, CancellationToken.None);
+        result.Outcome.Should().Be(TaskOutcome.Failed);
+
+        tasksCompleted.Should().BeEmpty();           // failure does not increment the Done counter
+        toolCalls.Should().ContainSingle().Which.Should().Be(23);
+        timeToPr.Should().BeEmpty();                 // PR was never opened
+
+        listener.RecordObservableInstruments();
+        passRate.Should().NotBeEmpty();
+        passRate[^1].Should().Be(0d);                // 0 successes / 1 total
+    }
 }

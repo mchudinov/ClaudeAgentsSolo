@@ -1,6 +1,7 @@
 using DeveloperAgent.Agent;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,7 +21,8 @@ public sealed class TaskExecutor(
     IGitClient gitClient,
     IAgentRunner agentRunner,
     ITaskStateStore taskStateStore,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    AgentMetrics metrics)
 {
     private readonly AgentOptions _options = agentOptions.Value;
 
@@ -103,6 +105,7 @@ public sealed class TaskExecutor(
                 "Agent run failed on round {Round}. {ItemId} {Outcome} {TerminationReason}",
                 round, item.ProjectItemId, result.Outcome, result.TerminationReason);
 
+            metrics.RecordTaskTerminated(success: false, toolCalls: result.ToolCallsUsed);
             return new TaskExecutionResult(TaskOutcome.Failed);
         }
 
@@ -124,11 +127,13 @@ public sealed class TaskExecutor(
                 "Agent completed but opened no PR. {ItemId}",
                 item.ProjectItemId);
 
+            metrics.RecordTaskTerminated(success: false, toolCalls: result.ToolCallsUsed);
             return new TaskExecutionResult(TaskOutcome.Failed);
         }
 
         var pr = result.PullRequest;
         var prOpenedAt = timeProvider.GetUtcNow();
+        metrics.RecordTimeToPullRequest(prOpenedAt - startedAt);
 
         // ── 4. PR OPENED ──────────────────────────────────────────────────────
         state = state with
@@ -178,6 +183,7 @@ public sealed class TaskExecutor(
                 // ── 7. CLEANUP (Done only) ─────────────────────────────────
                 await workspaceManager.ReleaseAsync(ws, ct);
 
+                metrics.RecordTaskTerminated(success: true, toolCalls: result.ToolCallsUsed);
                 return new TaskExecutionResult(TaskOutcome.Done);
             }
 
@@ -230,6 +236,7 @@ public sealed class TaskExecutor(
                         "Agent run failed on round {Round}. {ItemId} {Outcome} {TerminationReason}",
                         round, item.ProjectItemId, result.Outcome, result.TerminationReason);
 
+                    metrics.RecordTaskTerminated(success: false, toolCalls: result.ToolCallsUsed);
                     return new TaskExecutionResult(TaskOutcome.Failed);
                 }
 

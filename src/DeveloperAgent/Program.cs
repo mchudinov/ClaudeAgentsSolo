@@ -3,8 +3,10 @@ using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
+using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
@@ -130,6 +132,14 @@ public class Program
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>(),
                 sp.GetServices<ITool>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AnthropicAgentRunner>>()));
+
+            // ── Observability ─────────────────────────────────────────────────────
+            // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
+            // it to the OTel metrics pipeline so its instruments flow to whatever
+            // exporter ServiceDefaults wires up (OTEL_EXPORTER_OTLP_ENDPOINT etc).
+            builder.Services.AddSingleton<AgentMetrics>();
+            builder.Services.AddOpenTelemetry()
+                .WithMetrics(m => m.AddMeter(AgentMetrics.MeterName));
 
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
