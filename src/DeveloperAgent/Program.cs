@@ -143,7 +143,14 @@ public class Program
 
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
-            builder.Services.AddSingleton<ITaskStateStore, InMemoryTaskStateStore>();
+            // Step-11 (P2-B part 2/2): durable per-item state via ProgrammingTaskActor.
+            // AddActors below registers IActorProxyFactory in DI; we wrap it with the
+            // agent identity (machine name) and use that as the actor.AgentId field for
+            // the TryClaimAsync invariant. InMemoryTaskStateStore stays in the codebase
+            // for unit tests but is no longer the production registration.
+            builder.Services.AddSingleton<ITaskStateStore>(sp => new DaprActorTaskStateStore(
+                sp.GetRequiredService<Dapr.Actors.Client.IActorProxyFactory>(),
+                Environment.MachineName));
             builder.Services.AddSingleton<TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
 
