@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
+using DeveloperAgent.Resilience;
 using Microsoft.Extensions.Options;
 using Octokit;
 using Octokit.Internal;
@@ -95,11 +95,17 @@ internal interface IRestTransport
 /// Wraps <see cref="OctokitGraphQL.Connection"/> to execute raw GraphQL queries.
 /// Lazy-constructed: construction tolerates empty configuration.
 /// </summary>
+/// <remarks>
+/// The underlying <see cref="HttpClient"/> is obtained from
+/// <see cref="IHttpClientFactory"/> under the <see cref="HttpClientNames.GitHubGraphQL"/>
+/// name so the standard resilience pipeline (timeouts + retries with exponential
+/// back-off + circuit breaker) wired in <c>Program.cs</c> covers every GraphQL call.
+/// </remarks>
 internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 {
     private readonly IOptions<GitHubOptions> _options;
     private readonly SecretsBundle _secrets;
-    private readonly HostAllowlistHandler _egressHandler;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     // Lazy so construction doesn't fail on missing config at startup
     private OctokitGraphQL.Connection? _connection;
@@ -108,11 +114,11 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
     public OctokitGraphQLTransport(
         IOptions<GitHubOptions> options,
         SecretsBundle secrets,
-        HostAllowlistHandler egressHandler)
+        IHttpClientFactory httpClientFactory)
     {
         _options = options;
         _secrets = secrets;
-        _egressHandler = egressHandler;
+        _httpClientFactory = httpClientFactory;
     }
 
     private OctokitGraphQL.Connection GetConnection()
@@ -123,18 +129,15 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
             if (_connection is not null) return _connection;
             var version = typeof(OctokitGraphQLTransport).Assembly
                 .GetName().Version?.ToString(3) ?? "1.0.0";
-
-            // Route requests through HostAllowlistHandler so non-allowlisted hosts
-            // throw SandboxViolationException. The inner HttpClientHandler is the
-            // standard System.Net.Http transport — we do NOT add proxy / cache
-            // behavior here, only the egress filter.
-            _egressHandler.InnerHandler = new HttpClientHandler();
-            var httpClient = new HttpClient(_egressHandler);
-
+            // IHttpClientFactory pools the resilient HttpMessageHandler under the
+            // configured client name; the pipeline (egress allowlist + standard
+            // resilience) is wired in Program.cs. Octokit.GraphQL.Connection takes
+            // the HttpClient directly and reuses it for every request.
+            var http = _httpClientFactory.CreateClient(HttpClientNames.GitHubGraphQL);
             _connection = new OctokitGraphQL.Connection(
                 new OctokitGraphQL.ProductHeaderValue("DeveloperAgent", version),
                 new OctokitGraphQL.Internal.InMemoryCredentialStore(_secrets.GitHubToken),
-                httpClient);
+                http);
             return _connection;
         }
     }
@@ -164,11 +167,21 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 /// Wraps <see cref="GitHubClient"/> for REST-based GitHub operations.
 /// Lazy-constructed: construction tolerates empty configuration.
 /// </summary>
+/// <remarks>
+/// The transport is wired through <see cref="IHttpMessageHandlerFactory"/> under the
+/// <see cref="HttpClientNames.GitHubRest"/> name so the standard resilience pipeline
+/// (timeouts + retries with exponential back-off + circuit breaker) wired in
+/// <c>Program.cs</c> applies to every REST request. Octokit's <see cref="Connection"/>
+/// does not consume a <see cref="HttpClient"/> directly — instead it accepts an
+/// <see cref="Octokit.Internal.IHttpClient"/>, so we plug the resilient
+/// <see cref="HttpMessageHandler"/> chain via
+/// <see cref="Octokit.Internal.HttpClientAdapter"/>'s handler-factory ctor.
+/// </remarks>
 internal sealed class OctokitRestTransport : IRestTransport
 {
     private readonly IOptions<GitHubOptions> _options;
     private readonly SecretsBundle _secrets;
-    private readonly HostAllowlistHandler _egressHandler;
+    private readonly IHttpMessageHandlerFactory _handlerFactory;
 
     private GitHubClient? _client;
     private readonly object _lock = new();
@@ -176,11 +189,11 @@ internal sealed class OctokitRestTransport : IRestTransport
     public OctokitRestTransport(
         IOptions<GitHubOptions> options,
         SecretsBundle secrets,
-        HostAllowlistHandler egressHandler)
+        IHttpMessageHandlerFactory handlerFactory)
     {
         _options = options;
         _secrets = secrets;
-        _egressHandler = egressHandler;
+        _handlerFactory = handlerFactory;
     }
 
     private GitHubClient GetClient()
@@ -191,28 +204,47 @@ internal sealed class OctokitRestTransport : IRestTransport
             if (_client is not null) return _client;
             var version = typeof(OctokitRestTransport).Assembly
                 .GetName().Version?.ToString(3) ?? "1.0.0";
-
-            // Route the underlying IConnection through HostAllowlistHandler so
-            // non-allowlisted hosts throw SandboxViolationException before they
-            // leave the process. Octokit's HttpClientAdapter takes a factory
-            // that returns the HttpMessageHandler chain — we hand it our
-            // egress filter, which itself defers to HttpClientHandler for
-            // the actual transport.
-            var httpClient = new HttpClientAdapter(() =>
-            {
-                _egressHandler.InnerHandler = new HttpClientHandler();
-                return _egressHandler;
-            });
+            // HttpClientAdapter requests a fresh HttpMessageHandler on each Send,
+            // but the IHttpMessageHandlerFactory returns a pooled, long-lived handler
+            // with the standard resilience policies (retries, timeouts, circuit breaker)
+            // pre-applied and the egress allowlist as the outer handler (wired in
+            // Program.cs). We therefore wrap the handler in a non-disposing delegating
+            // handler so Octokit's per-request disposal doesn't tear down the pool.
+            var adapter = new Octokit.Internal.HttpClientAdapter(
+                () => new NonDisposingHandlerWrapper(
+                    _handlerFactory.CreateHandler(HttpClientNames.GitHubRest)));
 
             var connection = new Octokit.Connection(
                 new Octokit.ProductHeaderValue("DeveloperAgent", version),
-                httpClient)
-            {
-                Credentials = new Credentials(_secrets.GitHubToken)
-            };
+                Octokit.GitHubClient.GitHubApiUrl,
+                new Octokit.Internal.InMemoryCredentialStore(new Octokit.Credentials(_secrets.GitHubToken)),
+                adapter,
+                new Octokit.Internal.SimpleJsonSerializer());
 
             _client = new GitHubClient(connection);
             return _client;
+        }
+    }
+
+    /// <summary>
+    /// Wraps a long-lived <see cref="HttpMessageHandler"/> (typically the one returned
+    /// by <see cref="IHttpMessageHandlerFactory.CreateHandler(string)"/>, which is
+    /// pooled by the runtime) so that Octokit's <see cref="HttpClient"/> disposal
+    /// path does NOT dispose the underlying handler. Disposing the pooled handler
+    /// would tear down the resilience state (retry counters, circuit-breaker state)
+    /// and defeat the standard resilience pipeline.
+    /// </summary>
+    private sealed class NonDisposingHandlerWrapper : DelegatingHandler
+    {
+        public NonDisposingHandlerWrapper(HttpMessageHandler inner)
+            : base(inner)
+        {
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // Intentionally do NOT call base.Dispose(disposing) — we don't own the
+            // wrapped handler, the IHttpMessageHandlerFactory does.
         }
     }
 

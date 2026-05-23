@@ -1,3 +1,5 @@
+using CommunityToolkit.Aspire.Hosting.Dapr;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Redis resource that backs Dapr state for the DeveloperAgent.
@@ -16,12 +18,38 @@ var stateStore = builder
     .AddDaprStateStore("agent-state-store")
     .WaitFor(agentState);
 
+// Dapr Resiliency CRD (Step-26, P2-K). The YAML is published with the
+// DeveloperAgent's content output; we hand a file path to the toolkit, which
+// adds the containing folder to the sidecar's --resources-path so the daprd
+// process loads it at startup alongside the state-store component.
+var resiliencyYamlPath = ResolveDaprComponentPath("resiliency.yaml");
+var resiliency = builder
+    .AddDaprComponent(
+        "resiliency-default",
+        "resiliency",
+        new DaprComponentOptions { LocalPath = resiliencyYamlPath });
+
 builder.AddProject<Projects.DeveloperAgent>("web")
     .WithReference(agentState)
     .WaitFor(agentState)
-    .WithDaprSidecar(sidecar => sidecar.WithReference(stateStore));
+    .WithDaprSidecar(sidecar => sidecar
+        .WithReference(stateStore)
+        .WithReference(resiliency));
 
 builder.Build().Run();
+
+// Resolves the absolute path to a file under DeveloperAgent's dapr-components
+// folder, regardless of whether the AppHost is launched from the repo root,
+// the AppHost project folder, or via `dotnet run`. The folder is shipped to
+// the DeveloperAgent output via its csproj content include; locally we point
+// at the source-tree file so edits round-trip without rebuilding.
+static string ResolveDaprComponentPath(string fileName)
+{
+    var sourcePath = Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "DeveloperAgent", "dapr-components", fileName));
+    return sourcePath;
+}
 
 // Expose the implicit top-level Program type so Aspire.Hosting.Testing can
 // reach an accessible entry point from the DeveloperAgent.Tests assembly.

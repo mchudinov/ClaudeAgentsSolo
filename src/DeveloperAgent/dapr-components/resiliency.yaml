@@ -1,0 +1,102 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: resiliency-default
+# Resiliency spec — schema version Dapr v1.17 (see https://docs.dapr.io/operations/resiliency/policies/).
+# Defines named timeout / retry / circuit-breaker policies and wires them onto
+# the components and external targets the agent uses. New service-invocation
+# targets (e.g. an "anthropic" external app, or future MCP-backed apps) can
+# opt into these policies by referencing them under spec.targets.
+spec:
+  policies:
+    timeouts:
+      # Anthropic streaming requests: long-running token generation; allow
+      # plenty of headroom but cap at 2 minutes to bound a stuck stream.
+      anthropic-timeout: 2m
+      # GitHub REST + GraphQL: page reads + simple mutations. 30s is generous.
+      github-timeout: 30s
+      # MCP tool invocations: per-call deadline (subprocess stdio round-trip).
+      mcp-timeout: 30s
+      # Dapr state-store ops: should be sub-second on Redis; cap at 5s.
+      state-timeout: 5s
+
+    retries:
+      anthropic-default:
+        policy: exponential
+        maxInterval: 30s
+        maxRetries: 5
+        # 429 (rate-limit) + 5xx are the retriable cases. matchHTTP is honoured
+        # by Dapr's HTTP service-invocation path; for in-process HttpClient
+        # the same set is covered by AddStandardResilienceHandler defaults.
+        matchHTTP:
+          - 408
+          - 429
+          - 500
+          - 502
+          - 503
+          - 504
+
+      github-default:
+        policy: exponential
+        maxInterval: 15s
+        maxRetries: 5
+        matchHTTP:
+          - 408
+          - 429
+          - 500
+          - 502
+          - 503
+          - 504
+
+      mcp-default:
+        policy: exponential
+        maxInterval: 10s
+        maxRetries: 3
+
+      state-default:
+        policy: exponential
+        maxInterval: 5s
+        maxRetries: 3
+
+    circuitBreakers:
+      anthropic-default:
+        # Trip after 8 consecutive failures over a 1-minute window; stay open
+        # for 30s before allowing a half-open probe.
+        maxRequests: 1
+        interval: 1m
+        timeout: 30s
+        trip: consecutiveFailures >= 8
+
+      github-default:
+        maxRequests: 1
+        interval: 1m
+        timeout: 30s
+        trip: consecutiveFailures >= 8
+
+      mcp-default:
+        maxRequests: 1
+        interval: 1m
+        timeout: 30s
+        trip: consecutiveFailures >= 5
+
+      state-default:
+        maxRequests: 1
+        interval: 30s
+        timeout: 15s
+        trip: consecutiveFailures >= 10
+
+  # Targets bind policies to concrete apps / actors / components. Components
+  # listed here have Dapr automatically apply the named policies on every
+  # state-store call. The "apps" block is left empty for now — Anthropic and
+  # GitHub are HTTPS endpoints called from in-process HttpClients (covered
+  # by Microsoft.Extensions.Http.Resilience in Program.cs); when Step-17 adds
+  # MCP-backed service-invocation targets, they will be listed here.
+  targets:
+    apps: {}
+
+    components:
+      agent-state-store:
+        outbound:
+          timeout: state-timeout
+          retry: state-default
+          circuitBreaker: state-default
