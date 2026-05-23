@@ -1,17 +1,20 @@
-using Anthropic.SDK.Messaging;
+using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Workspace;
 
 namespace DeveloperAgent.Agent;
 
 /// <summary>
-/// Holds the mutable state for a single agent run: message history and counters.
+/// Holds the mutable state for a single agent run: counters, created PR, and any
+/// latched sandbox violation.
+/// <para>
 /// Created per <see cref="IAgentRunner.RunAsync"/> call and discarded when the method returns.
+/// Microsoft Agent Framework owns the chat history itself (via its internal
+/// <see cref="Microsoft.Agents.AI.AgentSession"/>), so this class no longer keeps a message list.
+/// </para>
 /// </summary>
 public sealed class AgentSession
 {
-    /// <summary>The full conversation history sent to and received from the model.</summary>
-    public List<Message> History { get; } = [];
-
     /// <summary>Number of model turns (request/response cycles) consumed so far.</summary>
     public int TurnsUsed { get; set; }
 
@@ -23,4 +26,12 @@ public sealed class AgentSession
 
     /// <summary>The <see cref="PullRequest"/> created by the <c>create_pull_request</c> tool, if called.</summary>
     public PullRequest? CreatedPullRequest { get; set; }
+
+    /// <summary>
+    /// If any <see cref="ITool"/> threw <see cref="SandboxViolationException"/> during this run,
+    /// the offending tool's name and the original exception are latched here so the runner
+    /// can surface an <see cref="AgentRunOutcome.SandboxViolation"/> outcome after Microsoft
+    /// Agent Framework wraps the exception in an <see cref="AggregateException"/>.
+    /// </summary>
+    public (string ToolName, SandboxViolationException Exception)? SandboxViolation { get; set; }
 }

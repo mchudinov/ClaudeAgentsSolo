@@ -75,7 +75,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         IGitHubProjectService fakeGitHub)
     {
         var secrets = new SecretsBundle(AnthropicApiKey: apiKey, GitHubToken: string.Empty);
-        var sdkClient = new AnthropicSdkClient(secrets, NullLogger<AnthropicSdkClient>.Instance);
+        var chatClientFactory = new AnthropicChatClientFactory(secrets);
 
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
@@ -93,10 +93,6 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // Provide the minimal tool set: write + create PR.
         // ShellRun and git tools are intentionally omitted so the agent is limited
         // to file writes and PR creation, keeping the test predictable and cheap.
-        var processRunner = new DefaultProcessRunner();
-        var sandbox = new CommandSandbox(
-            processRunner, workspaceOpts, NullLogger<CommandSandbox>.Instance);
-
         ITool[] tools =
         [
             new WriteFileTool(),
@@ -106,7 +102,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         ];
 
         return new AnthropicAgentRunner(
-            sdkClient,
+            chatClientFactory,
             MakePersonaLoader(),
             agentOpts,
             tools,
