@@ -1,5 +1,6 @@
 using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
@@ -84,6 +85,16 @@ public class Program
             builder.Services
                 .AddOptions<SandboxOptions>()
                 .Bind(builder.Configuration.GetSection("Sandbox"));
+
+            // ── MCP servers (Step-17, P2-F) ───────────────────────────────────────
+            // Both servers are Enabled=false by default — the agent boots cleanly without
+            // npx/node available. McpToolSource skips disabled servers silently and a
+            // per-server connect failure logs a warning rather than aborting startup.
+            builder.Services
+                .AddOptions<McpOptions>()
+                .Bind(builder.Configuration.GetSection("McpServers"));
+            builder.Services.AddSingleton<IMcpClientConnector, StdioMcpClientConnector>();
+            builder.Services.AddSingleton<IMcpToolSource, McpToolSource>();
 
             // ── Secret resolution — eager at startup ──────────────────────────────
             builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();
