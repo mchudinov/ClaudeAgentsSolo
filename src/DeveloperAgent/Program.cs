@@ -1,11 +1,14 @@
+using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Sandbox;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
+using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
@@ -138,11 +141,26 @@ public class Program
                 sp.GetServices<ITool>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AnthropicAgentRunner>>()));
 
+            // ── Observability ─────────────────────────────────────────────────────
+            // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
+            // it to the OTel metrics pipeline so its instruments flow to whatever
+            // exporter ServiceDefaults wires up (OTEL_EXPORTER_OTLP_ENDPOINT etc).
+            builder.Services.AddSingleton<AgentMetrics>();
+            builder.Services.AddOpenTelemetry()
+                .WithMetrics(m => m.AddMeter(AgentMetrics.MeterName));
+
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
             builder.Services.AddSingleton<ITaskStateStore, InMemoryTaskStateStore>();
             builder.Services.AddSingleton<TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
+
+            // ── Dapr Actors ───────────────────────────────────────────────────────
+            // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
+            // runtime knows about it and the Dapr sidecar can invoke instances.
+            // Step-11 will wire ITaskStateStore to call this actor; for now the
+            // registration alone is enough for the actor handlers to be served.
+            builder.Services.AddActors(opt => opt.Actors.RegisterActor<ProgrammingTaskActor>());
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
@@ -171,6 +189,10 @@ public class Program
 
             app.MapRazorComponents<DeveloperAgent.Components.App>()
                 .AddInteractiveServerRenderMode();
+
+            // Step-10: expose the Dapr Actors HTTP endpoints
+            // (dapr/config, actors/{type}/{id}/method/..., reminders, timers).
+            app.MapActorsHandlers();
 
             app.MapGet("/info", (ITaskStateStore taskStateStore) =>
             {
