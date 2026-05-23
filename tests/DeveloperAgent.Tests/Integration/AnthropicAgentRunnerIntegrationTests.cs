@@ -95,13 +95,16 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // ShellRun and git tools are intentionally omitted so the agent is limited
         // to file writes and PR creation, keeping the test predictable and cheap.
         var processRunner = new DefaultProcessRunner();
-        var denyPolicy = new PathDenyPolicy(Options.Create(new SandboxOptions
+        var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
             SecretFileRegexes = [],
-        }));
+            DeniedCommands = [],
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
         var sandbox = new CommandSandbox(
-            processRunner, workspaceOpts, denyPolicy, NullLogger<CommandSandbox>.Instance);
+            processRunner, workspaceOpts, denyPolicy, commandDenyPolicy, NullLogger<CommandSandbox>.Instance);
 
         ITool[] tools =
         [

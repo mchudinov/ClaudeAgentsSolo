@@ -37,15 +37,19 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         var githubOpts = Options.Create(new GitHubOptions());
         var secrets = new SecretsBundle("", "");
         var processRunner = new DefaultProcessRunner();
-        var denyPolicy = new PathDenyPolicy(Options.Create(new SandboxOptions
+        var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
             SecretFileRegexes = [],
-        }));
+            DeniedCommands = [],
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
         var sandbox = new CommandSandbox(
             processRunner,
             workspaceOpts,
             denyPolicy,
+            commandDenyPolicy,
             Substitute.For<ILogger<CommandSandbox>>());
 
         return new GitClient(
