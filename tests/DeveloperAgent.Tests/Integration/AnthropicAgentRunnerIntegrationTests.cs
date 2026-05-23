@@ -76,7 +76,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         IGitHubProjectService fakeGitHub)
     {
         var secrets = new SecretsBundle(AnthropicApiKey: apiKey, GitHubToken: string.Empty);
-        var sdkClient = new AnthropicSdkClient(secrets, NullLogger<AnthropicSdkClient>.Instance);
+        var chatClientFactory = new AnthropicChatClientFactory(secrets);
 
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
@@ -112,7 +112,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         ];
 
         return new AnthropicAgentRunner(
-            sdkClient,
+            chatClientFactory,
             MakePersonaLoader(),
             agentOpts,
             tools,
