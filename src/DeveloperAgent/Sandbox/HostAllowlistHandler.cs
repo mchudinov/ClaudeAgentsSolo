@@ -31,9 +31,12 @@ public sealed class HostAllowlistHandler : DelegatingHandler
     /// <summary>
     /// Constructor for tests: takes an explicit host list and lets the caller
     /// install an inner handler via the standard <see cref="DelegatingHandler.InnerHandler"/>
-    /// property after construction.
+    /// property after construction. Internal so the DI activator only sees the
+    /// single public ctor above — having both ctors public would make
+    /// <c>ServiceProvider.GetRequiredService&lt;HostAllowlistHandler&gt;</c> ambiguous
+    /// when the type is resolved via <c>AddHttpMessageHandler&lt;T&gt;</c>.
     /// </summary>
-    public HostAllowlistHandler(IEnumerable<string> allowedHosts)
+    internal HostAllowlistHandler(IEnumerable<string> allowedHosts)
     {
         _patterns = (allowedHosts ?? [])
             .Where(h => !string.IsNullOrWhiteSpace(h))

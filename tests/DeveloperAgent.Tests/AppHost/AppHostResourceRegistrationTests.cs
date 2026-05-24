@@ -136,6 +136,45 @@ public sealed class AppHostResourceRegistrationTests
             string.Join(", ", annotations.Select(a => a.GetType().Name)));
     }
 
+    [Fact]
+    public async Task AppHost_registers_resiliency_component_named_resiliency_default()
+    {
+        await using var app = await BuildAppHostAsync();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        var resource = model.Resources.SingleOrDefault(r => r.Name == "resiliency-default");
+
+        resource.Should().NotBeNull(
+            because: "Step-26 (P2-K) requires a Dapr Resiliency component named " +
+                     "'resiliency-default' to be registered in the AppHost model so the " +
+                     "Dapr sidecar loads the resiliency.yaml CRD at startup");
+    }
+
+    [Fact]
+    public async Task Web_dapr_sidecar_references_resiliency_default_component()
+    {
+        await using var app = await BuildAppHostAsync();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        var web = model.Resources.SingleOrDefault(r => r.Name == "web");
+        web.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'web'");
+
+        var annotations = web!.Annotations.ToList();
+
+        // Same walker pattern as the state-store assertion above — the sidecar
+        // chain is: web -> DaprSidecarAnnotation -> SidecarResource -> Annotations
+        // -> DaprComponentReferenceAnnotation -> Component(resiliency-default).
+        var referencesResiliency = annotations.Any(a =>
+            AnnotationReferencesResource(a, "resiliency-default", maxDepth: 6));
+
+        referencesResiliency.Should().BeTrue(
+            because: "the 'web' project's Dapr sidecar must reference the " +
+                     "'resiliency-default' component (via WithDaprSidecar + " +
+                     "sidecar.WithReference(resiliency)) so daprd loads the Resiliency " +
+                     "CRD at startup. Annotation types present: {0}",
+            string.Join(", ", annotations.Select(a => a.GetType().Name)));
+    }
+
     private static async Task<DistributedApplication> BuildAppHostAsync()
     {
         var builder = await DistributedApplicationTestingBuilder

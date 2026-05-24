@@ -2,6 +2,8 @@ using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Sandbox;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -51,17 +53,31 @@ public sealed class GitHubProjectServiceIntegrationTests
 
         var secrets = new SecretsBundle(AnthropicApiKey: string.Empty, GitHubToken: token);
 
-        // Integration tests exercise the real api.github.com — make the egress
-        // handler permissive enough to allow that host (the production default
-        // already does, but spelling it out keeps the test independent of
-        // SandboxOptions defaults). Each transport gets its own handler instance:
-        // the handler stores an InnerHandler on itself, so sharing one across
-        // two transports would cause one's HttpClient pipeline to mutate the other.
-        static HostAllowlistHandler NewEgress() =>
-            new(new[] { "api.github.com", "*.githubusercontent.com" });
+        // Step-26 (P2-K) + Step-23 (P2-I) integration: both Octokit transports
+        // now source their HttpClient / HttpMessageHandler from IHttpClientFactory +
+        // IHttpMessageHandlerFactory, with the egress allowlist (HostAllowlistHandler)
+        // composed before the standard resilience pipeline so denied hosts short-circuit
+        // before any retry. Mirror the named-client wiring from Program.cs in a minimal
+        // ServiceCollection; permissive AllowedHosts so the live api.github.com test passes.
+        var services = new ServiceCollection();
+        services.AddSingleton<IOptions<SandboxOptions>>(
+            Options.Create(new SandboxOptions
+            {
+                AllowedHosts = new List<string> { "api.github.com", "*.githubusercontent.com" }
+            }));
+        services.AddTransient<HostAllowlistHandler>();
+        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubRest)
+            .AddHttpMessageHandler<HostAllowlistHandler>()
+            .AddStandardResilienceHandler();
+        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubGraphQL)
+            .AddHttpMessageHandler<HostAllowlistHandler>()
+            .AddStandardResilienceHandler();
+        var provider = services.BuildServiceProvider();
+        var httpClientFactory  = provider.GetRequiredService<IHttpClientFactory>();
+        var handlerFactory     = provider.GetRequiredService<IHttpMessageHandlerFactory>();
 
-        var graphQL = new OctokitGraphQLTransport(options, secrets, NewEgress());
-        var rest    = new OctokitRestTransport(options, secrets, NewEgress());
+        var graphQL = new OctokitGraphQLTransport(options, secrets, httpClientFactory);
+        var rest    = new OctokitRestTransport(options, secrets, handlerFactory);
 
         return new GitHubProjectService(
             graphQL,

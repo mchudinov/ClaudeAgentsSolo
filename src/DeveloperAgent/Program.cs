@@ -5,10 +5,12 @@ using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Resilience;
 using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
+using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Debugging;
@@ -108,6 +110,34 @@ public class Program
                     GitHubToken: resolver.Resolve(githubOptions.TokenSecretName));
             });
 
+            // ── Resilient HTTP clients (Step-26, P2-K) + egress filter (Step-23, P2-I) ──
+            // Every external HTTP dependency the agent uses is reached through an
+            // IHttpClientFactory-managed named HttpClient with two handlers composed
+            // in this order (outer-to-inner):
+            //   1. HostAllowlistHandler — denied hosts throw SandboxViolationException
+            //      BEFORE any retry attempt (egress is the outermost layer so retries
+            //      never re-hit a denied host).
+            //   2. Standard resilience pipeline — timeouts + retries with exponential
+            //      back-off + circuit breaker.
+            // The Dapr Resiliency CRD (src/DeveloperAgent/dapr-components/resiliency.yaml)
+            // covers cross-process service-invocation and state-store calls; the policies
+            // below cover the in-process transport layer to Anthropic and GitHub.
+            // HostAllowlistHandler itself is DI-registered further down as a transient.
+            builder.Services
+                .AddHttpClient(HttpClientNames.Anthropic)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
+
+            builder.Services
+                .AddHttpClient(HttpClientNames.GitHubRest)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
+
+            builder.Services
+                .AddHttpClient(HttpClientNames.GitHubGraphQL)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
+
             // ── GitHub service ────────────────────────────────────────────────────
             // Singletons are lazy: construction tolerates empty GitHubOptions.
             // First use will fail fast if required config (Owner, etc.) is absent.
@@ -128,12 +158,10 @@ public class Program
                 sp.GetRequiredService<IPathDenyPolicy>(),
                 sp.GetRequiredService<ICommandDenyPolicy>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
-            // HostAllowlistHandler is registered as a transient so callers that opt into
-            // egress filtering (named HttpClients, future MCP transports) can pull it
-            // from DI. The existing Octokit / Anthropic SDK clients construct their own
-            // HttpClient internally and do not yet flow through IHttpClientFactory —
-            // wiring them up is tracked as a follow-up; for now the handler is available
-            // for the next service that uses HttpClientFactory to consume.
+            // HostAllowlistHandler is registered as a transient so the three named
+            // HttpClients above (Anthropic, GitHubRest, GitHubGraphQL) can compose it
+            // as their outer message handler; .AddHttpMessageHandler<T>() resolves a
+            // new instance per request from the per-request scope.
             builder.Services.AddTransient<HostAllowlistHandler>();
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();

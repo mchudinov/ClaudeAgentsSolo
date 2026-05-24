@@ -41,6 +41,7 @@
 
   <ItemGroup>
     <Content Include="..\..\personas\**\*.md" LinkBase="personas" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="dapr-components\**\*.yaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
