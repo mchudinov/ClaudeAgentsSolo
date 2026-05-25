@@ -10,7 +10,7 @@
       "Bash(git commit *)",
       "Bash(git stash *)",
       "Bash(git *)",
-      "Bash(git log *)",      
+      "Bash(git log *)",
       "Bash(dotnet clean *)",
       "Bash(dotnet test *)",
       "Bash(dotnet build *)",
@@ -35,7 +35,8 @@
       "PowerShell(git checkout *)",
       "PowerShell(git branch --show-current; git status -s; \"--- commits on branch ---\"; git log origin/main..HEAD --oneline; \"--- main untouched ---\"; git log main --oneline -1; \"--- diff stat ---\"; git diff origin/main..HEAD --stat)",
       "PowerShell(gh pr *)",
-      "PowerShell(git *)"      
+      "PowerShell(git *)",
+      "Bash(dotnet msbuild *)"
     ]
   }
 }
