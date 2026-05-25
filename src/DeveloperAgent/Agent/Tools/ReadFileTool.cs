@@ -1,11 +1,19 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DeveloperAgent.Sandbox;
 
 namespace DeveloperAgent.Agent.Tools;
 
 /// <summary>Reads a UTF-8 text file from within the workspace.</summary>
 public sealed class ReadFileTool : ITool
 {
+    private readonly IPathDenyPolicy _denyPolicy;
+
+    public ReadFileTool(IPathDenyPolicy denyPolicy)
+    {
+        _denyPolicy = denyPolicy;
+    }
+
     public string Name => "read_file";
     public string Description => "Read the contents of a UTF-8 text file at the given workspace-relative path. Returns the file contents as a string.";
 
@@ -33,15 +41,8 @@ public sealed class ReadFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        string resolved;
-        try
-        {
-            resolved = PathValidator.ResolveOrThrow(path, context.Workspace);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return new ToolResult(true, ex.Message);
-        }
+        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+            return ToolResult.Denied(deny);
 
         if (!File.Exists(resolved))
             return new ToolResult(true, $"File not found: {path}");

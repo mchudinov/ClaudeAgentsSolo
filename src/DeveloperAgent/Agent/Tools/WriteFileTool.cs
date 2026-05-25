@@ -1,11 +1,19 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DeveloperAgent.Sandbox;
 
 namespace DeveloperAgent.Agent.Tools;
 
 /// <summary>Creates or overwrites a file within the workspace, creating parent directories as needed.</summary>
 public sealed class WriteFileTool : ITool
 {
+    private readonly IPathDenyPolicy _denyPolicy;
+
+    public WriteFileTool(IPathDenyPolicy denyPolicy)
+    {
+        _denyPolicy = denyPolicy;
+    }
+
     public string Name => "write_file";
     public string Description => "Create or overwrite a file at the given workspace-relative path with the specified content. Parent directories are created automatically.";
 
@@ -38,15 +46,8 @@ public sealed class WriteFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        string resolved;
-        try
-        {
-            resolved = PathValidator.ResolveOrThrow(path, context.Workspace);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return new ToolResult(true, ex.Message);
-        }
+        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+            return ToolResult.Denied(deny);
 
         try
         {

@@ -2,6 +2,7 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -78,7 +79,8 @@ public sealed class AgentLifecycleServiceTests
             gitClient,
             agentRunner,
             stateStore,
-            timeProvider);
+            timeProvider,
+            new AgentMetrics());
 
     [Fact]
     public async Task Startup_logs_in_flight_items_and_skips()

@@ -1,10 +1,17 @@
+using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Resilience;
+using DeveloperAgent.Sandbox;
+using DeveloperAgent.Observability;
 using DeveloperAgent.Workspace;
 using Library;
+using Microsoft.Extensions.Http.Resilience;
+using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
@@ -77,6 +84,20 @@ public class Program
                 .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
                 .ValidateOnStart();
 
+            builder.Services
+                .AddOptions<SandboxOptions>()
+                .Bind(builder.Configuration.GetSection("Sandbox"));
+
+            // ── MCP servers (Step-17, P2-F) ───────────────────────────────────────
+            // Both servers are Enabled=false by default — the agent boots cleanly without
+            // npx/node available. McpToolSource skips disabled servers silently and a
+            // per-server connect failure logs a warning rather than aborting startup.
+            builder.Services
+                .AddOptions<McpOptions>()
+                .Bind(builder.Configuration.GetSection("McpServers"));
+            builder.Services.AddSingleton<IMcpClientConnector, StdioMcpClientConnector>();
+            builder.Services.AddSingleton<IMcpToolSource, McpToolSource>();
+
             // ── Secret resolution — eager at startup ──────────────────────────────
             builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();
             builder.Services.AddSingleton<SecretsBundle>(sp =>
@@ -88,6 +109,34 @@ public class Program
                     AnthropicApiKey: resolver.Resolve(anthropicOptions.ApiKeySecretName),
                     GitHubToken: resolver.Resolve(githubOptions.TokenSecretName));
             });
+
+            // ── Resilient HTTP clients (Step-26, P2-K) + egress filter (Step-23, P2-I) ──
+            // Every external HTTP dependency the agent uses is reached through an
+            // IHttpClientFactory-managed named HttpClient with two handlers composed
+            // in this order (outer-to-inner):
+            //   1. HostAllowlistHandler — denied hosts throw SandboxViolationException
+            //      BEFORE any retry attempt (egress is the outermost layer so retries
+            //      never re-hit a denied host).
+            //   2. Standard resilience pipeline — timeouts + retries with exponential
+            //      back-off + circuit breaker.
+            // The Dapr Resiliency CRD (src/DeveloperAgent/dapr-components/resiliency.yaml)
+            // covers cross-process service-invocation and state-store calls; the policies
+            // below cover the in-process transport layer to Anthropic and GitHub.
+            // HostAllowlistHandler itself is DI-registered further down as a transient.
+            builder.Services
+                .AddHttpClient(HttpClientNames.Anthropic)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
+
+            builder.Services
+                .AddHttpClient(HttpClientNames.GitHubRest)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
+
+            builder.Services
+                .AddHttpClient(HttpClientNames.GitHubGraphQL)
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler();
 
             // ── GitHub service ────────────────────────────────────────────────────
             // Singletons are lazy: construction tolerates empty GitHubOptions.
@@ -101,19 +150,28 @@ public class Program
             // is internal), so DI reflection cannot see them. Register via factory lambdas
             // which execute inside this assembly and can access internal members.
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
+            builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
+            builder.Services.AddSingleton<ICommandDenyPolicy, CommandDenyPolicy>();
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
+                sp.GetRequiredService<IPathDenyPolicy>(),
+                sp.GetRequiredService<ICommandDenyPolicy>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
+            // HostAllowlistHandler is registered as a transient so the three named
+            // HttpClients above (Anthropic, GitHubRest, GitHubGraphQL) can compose it
+            // as their outer message handler; .AddHttpMessageHandler<T>() resolves a
+            // new instance per request from the per-request scope.
+            builder.Services.AddTransient<HostAllowlistHandler>();
             builder.Services.AddSingleton<IGitClient, GitClient>();
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
 
             // ── Agent ─────────────────────────────────────────────────────────────
             // PersonaLoader throws at construction if persona file is missing or empty.
-            // AnthropicSdkClient resolves the API key lazily (on first SendAsync) so
+            // AnthropicChatClientFactory resolves the API key lazily (on first Create) so
             // an unconfigured dotnet run does not crash.
             builder.Services.AddSingleton<PersonaLoader>();
-            builder.Services.AddSingleton<IAnthropicClient, AnthropicSdkClient>();
+            builder.Services.AddSingleton<IAgentChatClientFactory, AnthropicChatClientFactory>();
             builder.Services.AddSingleton<ITool, ReadFileTool>();
             builder.Services.AddSingleton<ITool, WriteFileTool>();
             builder.Services.AddSingleton<ITool, EditFileTool>();
@@ -121,21 +179,35 @@ public class Program
             builder.Services.AddSingleton<ITool, ShellRunTool>();
             builder.Services.AddSingleton<ITool, CommentOnItemTool>();
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
-            // AnthropicAgentRunner has an internal constructor (because IAnthropicClient is internal).
-            // DI reflection only sees public constructors, so register via a factory lambda that
-            // executes inside this assembly and can therefore see the internal constructor.
-            builder.Services.AddSingleton<IAgentRunner>(sp => new AnthropicAgentRunner(
-                sp.GetRequiredService<IAnthropicClient>(),
-                sp.GetRequiredService<PersonaLoader>(),
-                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>(),
-                sp.GetServices<ITool>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AnthropicAgentRunner>>()));
+            builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
+
+            // ── Observability ─────────────────────────────────────────────────────
+            // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
+            // it to the OTel metrics pipeline so its instruments flow to whatever
+            // exporter ServiceDefaults wires up (OTEL_EXPORTER_OTLP_ENDPOINT etc).
+            builder.Services.AddSingleton<AgentMetrics>();
+            builder.Services.AddOpenTelemetry()
+                .WithMetrics(m => m.AddMeter(AgentMetrics.MeterName));
 
             // ── Lifecycle ─────────────────────────────────────────────────────────
             builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
-            builder.Services.AddSingleton<ITaskStateStore, InMemoryTaskStateStore>();
+            // Step-11 (P2-B part 2/2): durable per-item state via ProgrammingTaskActor.
+            // AddActors below registers IActorProxyFactory in DI; we wrap it with the
+            // agent identity (machine name) and use that as the actor.AgentId field for
+            // the TryClaimAsync invariant. InMemoryTaskStateStore stays in the codebase
+            // for unit tests but is no longer the production registration.
+            builder.Services.AddSingleton<ITaskStateStore>(sp => new DaprActorTaskStateStore(
+                sp.GetRequiredService<Dapr.Actors.Client.IActorProxyFactory>(),
+                Environment.MachineName));
             builder.Services.AddSingleton<TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
+
+            // ── Dapr Actors ───────────────────────────────────────────────────────
+            // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
+            // runtime knows about it and the Dapr sidecar can invoke instances.
+            // Step-11 will wire ITaskStateStore to call this actor; for now the
+            // registration alone is enough for the actor handlers to be served.
+            builder.Services.AddActors(opt => opt.Actors.RegisterActor<ProgrammingTaskActor>());
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
@@ -164,6 +236,10 @@ public class Program
 
             app.MapRazorComponents<DeveloperAgent.Components.App>()
                 .AddInteractiveServerRenderMode();
+
+            // Step-10: expose the Dapr Actors HTTP endpoints
+            // (dapr/config, actors/{type}/{id}/method/..., reminders, timers).
+            app.MapActorsHandlers();
 
             app.MapGet("/info", (ITaskStateStore taskStateStore) =>
             {

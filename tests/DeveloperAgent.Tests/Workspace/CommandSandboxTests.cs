@@ -1,4 +1,5 @@
 using DeveloperAgent.Configuration;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -23,14 +24,27 @@ public sealed class CommandSandboxTests
     private static CommandSandbox BuildSandbox(
         IProcessRunner runner,
         IReadOnlyList<string>? allowedCommands = null,
-        ILogger<CommandSandbox>? logger = null)
+        ILogger<CommandSandbox>? logger = null,
+        IReadOnlyList<CommandDenyRule>? deniedCommands = null)
     {
         var opts = Options.Create(new WorkspaceOptions
         {
             RootPath = RootPath,
             AllowedCommands = allowedCommands ?? new WorkspaceOptions().AllowedCommands,
         });
-        return new CommandSandbox(runner, opts, logger ?? Substitute.For<ILogger<CommandSandbox>>());
+        var sandboxOpts = Options.Create(new SandboxOptions
+        {
+            // Patterns drop out — the legacy CommandSandbox tests assume the *only*
+            // path constraint enforced on the CWD is workspace-escape.
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+            // Default to the production deny rules so the negative tests
+            // (git push --force etc.) trigger via the policy.
+            DeniedCommands = deniedCommands ?? new SandboxOptions().DeniedCommands,
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
+        return new CommandSandbox(runner, opts, denyPolicy, commandDenyPolicy, logger ?? Substitute.For<ILogger<CommandSandbox>>());
     }
 
     private static IProcessRunner OkRunner(int exitCode = 0, string stdout = "", string stderr = "")
@@ -267,7 +281,15 @@ public sealed class CommandSandboxTests
             RootPath = RootPath,
             AllowedCommands = ["dotnet build"],
         });
-        var sandbox = new CommandSandbox(runner, opts, Substitute.For<ILogger<CommandSandbox>>());
+        var sandboxOpts = Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+            DeniedCommands = [],
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
+        var sandbox = new CommandSandbox(runner, opts, denyPolicy, commandDenyPolicy, Substitute.For<ILogger<CommandSandbox>>());
 
         var siblingDir = RootPath + "x"; // adjacent directory, NOT inside root
         var act = async () => await sandbox.RunAsync(
@@ -387,6 +409,14 @@ public sealed class CommandSandboxTests
             // intercept via ArgAt; instead we use ReceivedCalls() after the fact and
             // call each formatter manually.
             var runner = OkRunner();
+            var sandboxOpts = Options.Create(new SandboxOptions
+            {
+                DenyPathPatterns = [],
+                SecretFileRegexes = [],
+                DeniedCommands = [],
+            });
+            var denyPolicy = new PathDenyPolicy(sandboxOpts);
+            var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
             var sandbox = new CommandSandbox(
                 runner,
                 Options.Create(new WorkspaceOptions
@@ -394,6 +424,8 @@ public sealed class CommandSandboxTests
                     RootPath = RootPath,
                     AllowedCommands = ["dotnet build"],
                 }),
+                denyPolicy,
+                commandDenyPolicy,
                 logger);
 
             // Act

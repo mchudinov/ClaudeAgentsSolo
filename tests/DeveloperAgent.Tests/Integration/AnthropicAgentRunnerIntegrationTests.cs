@@ -7,9 +7,12 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -75,7 +78,18 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         IGitHubProjectService fakeGitHub)
     {
         var secrets = new SecretsBundle(AnthropicApiKey: apiKey, GitHubToken: string.Empty);
-        var sdkClient = new AnthropicSdkClient(secrets, NullLogger<AnthropicSdkClient>.Instance);
+
+        // Step-26 (P2-K): AnthropicChatClientFactory now sources its HttpClient from
+        // IHttpClientFactory so the standard resilience pipeline applies. Spin up a
+        // minimal ServiceCollection with the same named-client + AddStandardResilienceHandler
+        // wiring Program.cs uses.
+        var services = new ServiceCollection();
+        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.Anthropic)
+            .AddStandardResilienceHandler();
+        var httpClientFactory = services.BuildServiceProvider()
+            .GetRequiredService<IHttpClientFactory>();
+
+        var chatClientFactory = new AnthropicChatClientFactory(secrets, httpClientFactory);
 
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
@@ -94,19 +108,27 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // ShellRun and git tools are intentionally omitted so the agent is limited
         // to file writes and PR creation, keeping the test predictable and cheap.
         var processRunner = new DefaultProcessRunner();
+        var sandboxOpts = Options.Create(new SandboxOptions
+        {
+            DenyPathPatterns = [],
+            SecretFileRegexes = [],
+            DeniedCommands = [],
+        });
+        var denyPolicy = new PathDenyPolicy(sandboxOpts);
+        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
         var sandbox = new CommandSandbox(
-            processRunner, workspaceOpts, NullLogger<CommandSandbox>.Instance);
+            processRunner, workspaceOpts, denyPolicy, commandDenyPolicy, NullLogger<CommandSandbox>.Instance);
 
         ITool[] tools =
         [
-            new WriteFileTool(),
-            new ReadFileTool(),
+            new WriteFileTool(denyPolicy),
+            new ReadFileTool(denyPolicy),
             new CreatePullRequestTool(fakeGitHub),
             new CommentOnItemTool(fakeGitHub),
         ];
 
         return new AnthropicAgentRunner(
-            sdkClient,
+            chatClientFactory,
             MakePersonaLoader(),
             agentOpts,
             tools,

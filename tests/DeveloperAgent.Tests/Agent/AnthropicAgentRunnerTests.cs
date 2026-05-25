@@ -1,17 +1,19 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using Anthropic.SDK.Messaging;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workspace;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Tests.Agent;
 
 /// <summary>
-/// Unit tests for <see cref="AnthropicAgentRunner"/> using scripted fake clients.
+/// Unit tests for <see cref="AnthropicAgentRunner"/> using a scripted fake <see cref="IChatClient"/>.
 /// No real Anthropic API calls are made.
 /// </summary>
 public sealed class AnthropicAgentRunnerTests
@@ -38,71 +40,110 @@ public sealed class AnthropicAgentRunnerTests
         return new PersonaLoader(Options.Create(new AgentOptions { PersonaPath = "personas/developer.md" }), env);
     }
 
+    private sealed class StubChatClientFactory : IAgentChatClientFactory
+    {
+        private readonly IChatClient _client;
+        public StubChatClientFactory(IChatClient client) => _client = client;
+        public IChatClient Create(string modelId) => _client;
+    }
+
     private static AnthropicAgentRunner BuildRunner(
-        IAnthropicClient client,
+        IChatClient chatClient,
         IEnumerable<ITool>? tools = null,
-        int hardCap = 40) =>
+        int hardCap = 40,
+        IMcpToolSource? mcpToolSource = null) =>
         new(
-            client,
+            new StubChatClientFactory(chatClient),
             MakePersonaLoader(),
             MakeOptions(hardCap),
             tools ?? [],
-            NullLogger<AnthropicAgentRunner>.Instance);
+            NullLogger<AnthropicAgentRunner>.Instance,
+            mcpToolSource);
 
-    // ── Fake helpers ─────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Builds an <see cref="AnthropicResponse"/> with a single tool_use block.
-    /// </summary>
-    private static AnthropicResponse ToolUseResponse(string toolName, string toolId = "tu-1", JsonNode? input = null)
+    private sealed class StubMcpToolSource : IMcpToolSource
     {
-        var toolUse = new ToolUseContent
+        private readonly IReadOnlyList<AITool> _tools;
+        public int Calls { get; private set; }
+        public StubMcpToolSource(IReadOnlyList<AITool> tools) => _tools = tools;
+        public Task<IReadOnlyList<AITool>> GetToolsAsync(CancellationToken ct)
         {
-            Id = toolId,
-            Name = toolName,
-            Input = input ?? JsonNode.Parse("{}")!,
-        };
-        var assistantMsg = new Message
-        {
-            Role = RoleType.Assistant,
-            Content = [toolUse]
-        };
-        return new AnthropicResponse("tool_use", [toolUse], assistantMsg);
+            Calls++;
+            return Task.FromResult(_tools);
+        }
     }
 
-    /// <summary>
-    /// Builds an <see cref="AnthropicResponse"/> with a text-only assistant message.
-    /// </summary>
-    private static AnthropicResponse TextResponse(string text = "Task done.") =>
-        new(
-            StopReason: "end_turn",
-            ContentBlocks: [new TextContent { Text = text }],
-            AssistantMessage: new Message
-            {
-                Role = RoleType.Assistant,
-                Content = [new TextContent { Text = text }]
-            });
+    private sealed class FakeMcpAITool : AIFunction
+    {
+        private static readonly JsonElement EmptyObject = JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        public FakeMcpAITool(string name) { Name = name; }
+        public override string Name { get; }
+        public override string Description => "fake-mcp-tool";
+        public override JsonElement JsonSchema => EmptyObject;
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments, CancellationToken cancellationToken)
+            => ValueTask.FromResult<object?>("ok");
+    }
+
+    // ── Chat response builders ───────────────────────────────────────────────
+
+    /// <summary>Build a ChatResponse that contains one function-call to the named tool with the given JSON args.</summary>
+    private static ChatResponse FunctionCallResponse(
+        string toolName,
+        string callId = "call-1",
+        IDictionary<string, object?>? args = null)
+    {
+        var fcc = new FunctionCallContent(callId, toolName, args ?? new Dictionary<string, object?>());
+        var msg = new ChatMessage(ChatRole.Assistant, [fcc]);
+        return new ChatResponse(msg) { FinishReason = ChatFinishReason.ToolCalls };
+    }
+
+    /// <summary>Build a plain-text ChatResponse (no function calls) — the loop terminates here.</summary>
+    private static ChatResponse TextResponse(string text = "Task done.")
+    {
+        var msg = new ChatMessage(ChatRole.Assistant, text);
+        return new ChatResponse(msg) { FinishReason = ChatFinishReason.Stop };
+    }
+
+    // ── Fake tool that records what the runner passed it ─────────────────────
+
+    private sealed class FakeTool : ITool
+    {
+        public string Name { get; init; } = "read_file";
+        public string Description { get; init; } = "Read";
+        public JsonNode InputSchema { get; init; } = JsonNode.Parse("{\"type\":\"object\"}")!;
+        public Func<JsonNode, ToolContext, CancellationToken, Task<ToolResult>>? Handler { get; init; }
+        public int Calls { get; private set; }
+
+        public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+        {
+            Calls++;
+            if (Handler is not null)
+                return await Handler(input, context, ct);
+            return new ToolResult(false, "ok");
+        }
+    }
 
     // ── Test: loop completes with text-only ──────────────────────────────────
 
     [Fact]
     public async Task Loop_completes_when_assistant_returns_text_only()
     {
-        // Arrange: client returns one tool_use, then a text-only response
-        var client = Substitute.For<IAnthropicClient>();
-        var fakeTool = Substitute.For<ITool>();
-        fakeTool.Name.Returns("read_file");
-        fakeTool.Description.Returns("Read a file");
-        fakeTool.InputSchema.Returns(JsonNode.Parse("{\"type\":\"object\"}")!);
-        fakeTool.InvokeAsync(Arg.Any<JsonNode>(), Arg.Any<ToolContext>(), Arg.Any<CancellationToken>())
-            .Returns(new ToolResult(false, "file contents"));
+        // Arrange: chat client returns one function-call (which the function-invoking middleware
+        // resolves locally), then a text-only response.
+        var tool = new FakeTool { Name = "read_file" };
 
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns(
-                ToolUseResponse("read_file"),  // first call → tool_use
-                TextResponse());               // second call → done
+        int call = 0;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                call++;
+                return call == 1
+                    ? Task.FromResult(FunctionCallResponse("read_file"))
+                    : Task.FromResult(TextResponse());
+            });
 
-        var runner = BuildRunner(client, [fakeTool]);
+        var runner = BuildRunner(chatClient, [tool]);
 
         // Act
         var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
@@ -112,6 +153,7 @@ public sealed class AnthropicAgentRunnerTests
         result.TurnsUsed.Should().Be(2);
         result.ToolCallsUsed.Should().Be(1);
         result.PullRequest.Should().BeNull();
+        tool.Calls.Should().Be(1);
     }
 
     // ── Test: hard cap ───────────────────────────────────────────────────────
@@ -119,20 +161,15 @@ public sealed class AnthropicAgentRunnerTests
     [Fact]
     public async Task HardCapReached_after_MaxModelTurnsHardCap_plus_one_turns()
     {
-        // Arrange: client always returns tool_use; cap = 3 → after 4th turn we exceed cap
-        var client = Substitute.For<IAnthropicClient>();
-        var fakeTool = Substitute.For<ITool>();
-        fakeTool.Name.Returns("read_file");
-        fakeTool.Description.Returns("Read a file");
-        fakeTool.InputSchema.Returns(JsonNode.Parse("{\"type\":\"object\"}")!);
-        fakeTool.InvokeAsync(Arg.Any<JsonNode>(), Arg.Any<ToolContext>(), Arg.Any<CancellationToken>())
-            .Returns(new ToolResult(false, "ok"));
+        // Arrange: client always returns tool_use; cap = 3 → after 4th request to the inner
+        // client we exceed cap and the runner returns HardCapReached.
+        var tool = new FakeTool { Name = "read_file" };
 
-        // Always return tool_use
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => ToolUseResponse("read_file"));
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(FunctionCallResponse("read_file")));
 
-        var runner = BuildRunner(client, [fakeTool], hardCap: 3);
+        var runner = BuildRunner(chatClient, [tool], hardCap: 3);
 
         // Act
         var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
@@ -140,6 +177,7 @@ public sealed class AnthropicAgentRunnerTests
         // Assert
         result.Outcome.Should().Be(AgentRunOutcome.HardCapReached);
         result.TurnsUsed.Should().Be(4); // turns 1,2,3 pass; turn 4 triggers the cap
+        result.TerminationReason.Should().Contain("Hard cap of 3");
     }
 
     // ── Test: sandbox violation ──────────────────────────────────────────────
@@ -147,18 +185,18 @@ public sealed class AnthropicAgentRunnerTests
     [Fact]
     public async Task SandboxViolation_from_tool_ends_run()
     {
-        var client = Substitute.For<IAnthropicClient>();
-        var fakeTool = Substitute.For<ITool>();
-        fakeTool.Name.Returns("shell_run");
-        fakeTool.Description.Returns("Run shell");
-        fakeTool.InputSchema.Returns(JsonNode.Parse("{\"type\":\"object\"}")!);
-        fakeTool.InvokeAsync(Arg.Any<JsonNode>(), Arg.Any<ToolContext>(), Arg.Any<CancellationToken>())
-            .Returns<ToolResult>(_ => throw new SandboxViolationException("rm -rf not allowed"));
+        var sandboxTool = new FakeTool
+        {
+            Name = "shell_run",
+            Description = "Run shell",
+            Handler = (_, _, _) => throw new SandboxViolationException("rm -rf not allowed"),
+        };
 
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns(ToolUseResponse("shell_run"));
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(FunctionCallResponse("shell_run")));
 
-        var runner = BuildRunner(client, [fakeTool]);
+        var runner = BuildRunner(chatClient, [sandboxTool]);
 
         // Act
         var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
@@ -167,8 +205,11 @@ public sealed class AnthropicAgentRunnerTests
         result.Outcome.Should().Be(AgentRunOutcome.SandboxViolation);
         result.TerminationReason.Should().Contain("shell_run");
 
-        // No further client calls after violation
-        await client.Received(1).SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>());
+        // No further chat-client calls after violation (only the one tool-use request)
+        await chatClient.Received(1).GetResponseAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(),
+            Arg.Any<ChatOptions>(),
+            Arg.Any<CancellationToken>());
     }
 
     // ── Test: cancellation ────────────────────────────────────────────────────
@@ -178,30 +219,24 @@ public sealed class AnthropicAgentRunnerTests
     {
         using var cts = new CancellationTokenSource();
 
-        var client = Substitute.For<IAnthropicClient>();
         int callCount = 0;
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
             {
                 callCount++;
                 if (callCount == 2)
                     cts.Cancel(); // cancel during second iteration
                 if (callCount >= 3)
-                    callInfo.Arg<CancellationToken>().ThrowIfCancellationRequested();
-                return ToolUseResponse("read_file");
+                    ci.Arg<CancellationToken>().ThrowIfCancellationRequested();
+                return Task.FromResult(FunctionCallResponse("read_file"));
             });
 
-        var fakeTool = Substitute.For<ITool>();
-        fakeTool.Name.Returns("read_file");
-        fakeTool.Description.Returns("Read");
-        fakeTool.InputSchema.Returns(JsonNode.Parse("{\"type\":\"object\"}")!);
-        fakeTool.InvokeAsync(Arg.Any<JsonNode>(), Arg.Any<ToolContext>(), Arg.Any<CancellationToken>())
-            .Returns(new ToolResult(false, "ok"));
+        var tool = new FakeTool { Name = "read_file" };
 
-        var runner = BuildRunner(client, [fakeTool]);
+        var runner = BuildRunner(chatClient, [tool]);
 
-        // Act: run with a pre-cancel via the token checked at loop start
-        // Use a separate cancel approach: cancel immediately before 3rd iteration
+        // Act
         var result = await runner.RunAsync(MakeRequest(), cts.Token);
 
         // Assert
@@ -216,27 +251,30 @@ public sealed class AnthropicAgentRunnerTests
     {
         var expectedPr = new PullRequest(55, "sha-xyz", "https://github.com/foo/pull/55");
 
-        var client = Substitute.For<IAnthropicClient>();
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns(
-                ToolUseResponse("create_pull_request"),
-                TextResponse("PR is open!"));
-
-        // Fake tool that sets session.CreatedPullRequest
-        var prTool = Substitute.For<ITool>();
-        prTool.Name.Returns("create_pull_request");
-        prTool.Description.Returns("Create PR");
-        prTool.InputSchema.Returns(JsonNode.Parse("{\"type\":\"object\"}")!);
-        prTool.InvokeAsync(Arg.Any<JsonNode>(), Arg.Any<ToolContext>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+        var prTool = new FakeTool
+        {
+            Name = "create_pull_request",
+            Description = "Create PR",
+            // The tool side-effects the session in production; mimic that here.
+            Handler = (_, ctx, _) =>
             {
-                // Simulate the real tool setting session.CreatedPullRequest
-                var ctx = callInfo.Arg<ToolContext>();
                 ctx.Session.CreatedPullRequest = expectedPr;
-                return new ToolResult(false, "{\"number\":55}");
+                return Task.FromResult(new ToolResult(false, "{\"number\":55}"));
+            },
+        };
+
+        int call = 0;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                call++;
+                return call == 1
+                    ? Task.FromResult(FunctionCallResponse("create_pull_request"))
+                    : Task.FromResult(TextResponse("PR is open!"));
             });
 
-        var runner = BuildRunner(client, [prTool]);
+        var runner = BuildRunner(chatClient, [prTool]);
 
         // Act
         var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
@@ -244,18 +282,75 @@ public sealed class AnthropicAgentRunnerTests
         // Assert
         result.Outcome.Should().Be(AgentRunOutcome.Completed);
         result.PullRequest.Should().Be(expectedPr);
+        prTool.Calls.Should().Be(1);
     }
 
-    // ── Test: API error after retries ────────────────────────────────────────
+    // ── Test: MCP tools merged into the agent's tool list ───────────────────
 
     [Fact]
-    public async Task ApiError_after_retries_exhausted()
+    public async Task RunAsync_appends_McpToolSource_tools_to_local_tools()
     {
-        var client = Substitute.For<IAnthropicClient>();
-        client.SendAsync(Arg.Any<AnthropicRequest>(), Arg.Any<CancellationToken>())
-            .Returns<AnthropicResponse>(_ => throw new AnthropicApiException("503 Service Unavailable"));
+        var localTool = new FakeTool { Name = "read_file" };
+        var mcpTools = new List<AITool> { new FakeMcpAITool("gh_search"), new FakeMcpAITool("ctx_lookup") };
+        var mcpSource = new StubMcpToolSource(mcpTools);
 
-        var runner = BuildRunner(client);
+        ChatOptions? observedOptions = null;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                observedOptions = ci.Arg<ChatOptions>();
+                return Task.FromResult(TextResponse("done"));
+            });
+
+        var runner = BuildRunner(chatClient, [localTool], mcpToolSource: mcpSource);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        mcpSource.Calls.Should().Be(1, "the runner must ask the MCP source for tools each run");
+        observedOptions.Should().NotBeNull();
+        var names = observedOptions!.Tools!
+            .OfType<AIFunction>()
+            .Select(t => t.Name)
+            .ToList();
+        names.Should().Contain("read_file");
+        names.Should().Contain("gh_search");
+        names.Should().Contain("ctx_lookup");
+        names.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task RunAsync_works_when_McpToolSource_is_null()
+    {
+        var localTool = new FakeTool { Name = "read_file" };
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(TextResponse("done")));
+
+        var runner = BuildRunner(chatClient, [localTool], mcpToolSource: null);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+    }
+
+    // ── Test: API error from chat client ─────────────────────────────────────
+
+    [Fact]
+    public async Task ApiError_when_chat_client_throws()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw new HttpRequestException("503 Service Unavailable"));
+
+        var runner = BuildRunner(chatClient);
 
         // Act
         var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
