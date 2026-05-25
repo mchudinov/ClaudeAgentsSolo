@@ -1,0 +1,26 @@
+<Project>
+
+  <!--
+    Workaround for distro-packaged .NET SDK (Ubuntu/Mint) where SDK 10.0.103
+    declares KnownAppHostPack AppHostPackVersion=10.0.3 but only AppHost pack
+    10.0.8 is actually installed at /usr/lib/dotnet/packs. Restore otherwise
+    falls back to nuget.org for Microsoft.NETCore.App.Host.<RID>, which is
+    never published there for distro-specific RIDs like ubuntu.24.04-x64.
+
+    Align AppHostPackVersion with the highest version present in
+    /usr/lib/dotnet/packs/Microsoft.NETCore.App.Ref. Directory.Build.targets
+    is imported after the SDK's KnownAppHostPack items are declared, so an
+    ItemGroup Update here takes effect during evaluation (including restore).
+    Condition uses $(TargetFramework) — metadata batching with %() is not
+    permitted on ItemGroup conditions outside Targets.
+  -->
+  <PropertyGroup Condition="Exists('/usr/lib/dotnet/packs/Microsoft.NETCore.App.Ref')">
+    <_InstalledAppHostPackVersion>$([System.IO.Path]::GetFileName($([System.IO.Directory]::GetDirectories('/usr/lib/dotnet/packs/Microsoft.NETCore.App.Ref').GetValue(0))))</_InstalledAppHostPackVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0' and '$(_InstalledAppHostPackVersion)' != ''">
+    <KnownAppHostPack Update="Microsoft.NETCore.App"
+                      AppHostPackVersion="$(_InstalledAppHostPackVersion)" />
+  </ItemGroup>
+
+</Project>
