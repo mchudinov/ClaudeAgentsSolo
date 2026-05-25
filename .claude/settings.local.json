@@ -1,20 +1,26 @@
 {
   "permissions": {
     "allow": [
+      "Skill(superpowers:systematic-debugging)",
+      "Skill(superpowers:systematic-debugging:*)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
       "Bash(git check-ignore *)",
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git stash *)",
       "Bash(git *)",
-      "Bash(git log *)",
-      "Skill(superpowers:systematic-debugging)",
-      "Skill(superpowers:systematic-debugging:*)",
-      "Skill(superpowers:writing-plans)",
-      "Skill(superpowers:subagent-driven-development)",
+      "Bash(git log *)",      
       "Bash(dotnet clean *)",
       "Bash(dotnet test *)",
       "Bash(dotnet build *)",
       "Bash(dotnet run *)",
+      "Bash(dotnet --info)",
+      "Bash(dotnet restore *)",
+      "Bash(dir *)",
+      "Bash(cd *)",
+      "Bash(curl *)",
+      "Bash(rm *)",
       "PowerShell(dotnet build *)",
       "PowerShell(dotnet run *)",
       "PowerShell(gh api *)",
@@ -29,11 +35,7 @@
       "PowerShell(git checkout *)",
       "PowerShell(git branch --show-current; git status -s; \"--- commits on branch ---\"; git log origin/main..HEAD --oneline; \"--- main untouched ---\"; git log main --oneline -1; \"--- diff stat ---\"; git diff origin/main..HEAD --stat)",
       "PowerShell(gh pr *)",
-      "PowerShell(git *)",
-      "Bash(dir *)",
-      "Bash(cd *)",
-      "Bash(curl *)",
-      "Bash(rm *)"      
+      "PowerShell(git *)"      
     ]
   }
 }
