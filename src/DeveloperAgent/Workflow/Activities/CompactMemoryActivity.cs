@@ -5,7 +5,7 @@ namespace DeveloperAgent.Workflow.Activities;
 
 /// <summary>
 /// Invokes /compact on the agent's conversation to trim token usage before the next cycle.
-/// Placeholder — P2-D part 2/3 will migrate TaskExecutor logic here.
+/// Currently a no-op stub — P2-J will implement this.
 /// </summary>
 public sealed class CompactMemoryActivity : WorkflowActivity<TaskInput, object?>
 {
@@ -15,8 +15,7 @@ public sealed class CompactMemoryActivity : WorkflowActivity<TaskInput, object?>
 
     public override Task<object?> RunAsync(WorkflowActivityContext context, TaskInput input)
     {
-        // placeholder — P2-D part 2/3 will migrate TaskExecutor logic here
-        _logger.LogInformation("[{Activity}] item={ItemId}", nameof(CompactMemoryActivity), input.ProjectItemId);
+        _logger.LogDebug("[{Activity}] no-op stub. item={ItemId}", nameof(CompactMemoryActivity), input.ProjectItemId);
         return Task.FromResult<object?>(null);
     }
 }

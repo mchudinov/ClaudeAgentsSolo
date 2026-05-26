@@ -4,8 +4,9 @@ using Microsoft.Extensions.Logging;
 namespace DeveloperAgent.Workflow.Activities;
 
 /// <summary>
-/// Runs the build and reports compile errors back to the agent.
-/// Placeholder — P2-D part 2/3 will migrate TaskExecutor logic here.
+/// Runs a build check and reports compile errors back to the agent.
+/// Currently a no-op stub — build is run by the agent internally via its shell tools.
+/// This activity is a future hook for an out-of-band build step.
 /// </summary>
 public sealed class BuildActivity : WorkflowActivity<TaskInput, object?>
 {
@@ -15,8 +16,7 @@ public sealed class BuildActivity : WorkflowActivity<TaskInput, object?>
 
     public override Task<object?> RunAsync(WorkflowActivityContext context, TaskInput input)
     {
-        // placeholder — P2-D part 2/3 will migrate TaskExecutor logic here
-        _logger.LogInformation("[{Activity}] item={ItemId}", nameof(BuildActivity), input.ProjectItemId);
+        _logger.LogDebug("[{Activity}] no-op stub. item={ItemId}", nameof(BuildActivity), input.ProjectItemId);
         return Task.FromResult<object?>(null);
     }
 }

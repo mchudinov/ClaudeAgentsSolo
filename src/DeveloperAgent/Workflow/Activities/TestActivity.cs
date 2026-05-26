@@ -5,7 +5,8 @@ namespace DeveloperAgent.Workflow.Activities;
 
 /// <summary>
 /// Runs the test suite and reports failures back to the agent.
-/// Placeholder — P2-D part 2/3 will migrate TaskExecutor logic here.
+/// Currently a no-op stub — tests are run by the agent internally via its shell tools.
+/// This activity is a future hook for an out-of-band test step.
 /// </summary>
 public sealed class TestActivity : WorkflowActivity<TaskInput, object?>
 {
@@ -15,8 +16,7 @@ public sealed class TestActivity : WorkflowActivity<TaskInput, object?>
 
     public override Task<object?> RunAsync(WorkflowActivityContext context, TaskInput input)
     {
-        // placeholder — P2-D part 2/3 will migrate TaskExecutor logic here
-        _logger.LogInformation("[{Activity}] item={ItemId}", nameof(TestActivity), input.ProjectItemId);
+        _logger.LogDebug("[{Activity}] no-op stub. item={ItemId}", nameof(TestActivity), input.ProjectItemId);
         return Task.FromResult<object?>(null);
     }
 }
