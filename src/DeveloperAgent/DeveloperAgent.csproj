@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Dapr.Workflow" Version="1.17.9" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.6.2" />
     <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.1.0-rc1" />
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
