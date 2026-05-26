@@ -22,7 +22,7 @@ public sealed class TaskExecutor(
     IAgentRunner agentRunner,
     ITaskStateStore taskStateStore,
     TimeProvider timeProvider,
-    AgentMetrics metrics)
+    AgentMetrics metrics) : ITaskExecutor
 {
     private readonly AgentOptions _options = agentOptions.Value;
 
@@ -260,6 +260,130 @@ public sealed class TaskExecutor(
         }
 
         // WaitForNextTickAsync returned false — cancellation (stoppingToken).
+        return new TaskExecutionResult(TaskOutcome.Cancelled);
+    }
+
+    /// <inheritdoc/>
+    public async Task<TaskExecutionResult> ResumeReviewAsync(
+        ProjectItem item, int pullRequestNumber, CancellationToken ct)
+    {
+        var now = timeProvider.GetUtcNow();
+
+        var state = new TaskState(
+            ProjectItemId: item.ProjectItemId,
+            IssueNumber: item.ContentNumber,
+            Title: item.Title,
+            Phase: TaskPhase.AwaitingReview,
+            BranchName: null,
+            PullRequestNumber: pullRequestNumber,
+            LastError: null,
+            StartedAtUtc: now,
+            UpdatedAtUtc: now,
+            PullRequestOpenedAtUtc: now,
+            LastReviewPolledAtUtc: now);
+
+        taskStateStore.Set(state);
+
+        logger.LogInformation(
+            "Resuming review wait after restart. {ItemId} PullRequestNumber={PullRequestNumber}",
+            item.ProjectItemId, pullRequestNumber);
+
+        int round = 1;
+        AgentRunResult? lastResult = null;
+
+        using var reviewTimer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_options.ReviewPollIntervalSeconds),
+            timeProvider);
+
+        while (await reviewTimer.WaitForNextTickAsync(ct))
+        {
+            var status = await github.GetPullRequestStatusAsync(pullRequestNumber, ct);
+
+            if (status.Merged && status.ChecksGreen && status.Review == PullRequestReviewState.Approved)
+            {
+                await github.MoveItemAsync(item.ProjectItemId, ProjectState.InReview, ProjectState.Done, ct);
+
+                state = state with { Phase = TaskPhase.Done, UpdatedAtUtc = timeProvider.GetUtcNow() };
+                taskStateStore.Set(state);
+
+                logger.LogInformation(
+                    "Resumed task done. {ItemId} {Phase}",
+                    item.ProjectItemId, TaskPhase.Done);
+
+                metrics.RecordTaskTerminated(success: true, toolCalls: lastResult?.ToolCallsUsed ?? 0);
+                return new TaskExecutionResult(TaskOutcome.Done);
+            }
+
+            if (status.Review == PullRequestReviewState.ChangesRequested)
+            {
+                round++;
+
+                var feedback = await github.GetReviewFeedbackSinceAsync(
+                    pullRequestNumber,
+                    state.LastReviewPolledAtUtc!.Value,
+                    ct);
+
+                state = state with
+                {
+                    LastReviewPolledAtUtc = timeProvider.GetUtcNow(),
+                    UpdatedAtUtc = timeProvider.GetUtcNow()
+                };
+                taskStateStore.Set(state);
+
+                await github.MoveItemAsync(item.ProjectItemId, ProjectState.InReview, ProjectState.InProgress, ct);
+
+                state = state with { Phase = TaskPhase.AgentRunning, UpdatedAtUtc = timeProvider.GetUtcNow() };
+                taskStateStore.Set(state);
+
+                logger.LogInformation(
+                    "Changes requested on resumed review; re-running agent. {ItemId} Round={Round}",
+                    item.ProjectItemId, round);
+
+                var ws = await workspaceManager.PrepareAsync(item.ProjectItemId, BranchName.ForTask(null, item.Title), ct);
+                await gitClient.CheckoutNewBranchAsync(ws, ct);
+
+                lastResult = await agentRunner.RunAsync(
+                    new AgentRunRequest(item, ws, PriorReviewFeedback: feedback), ct);
+
+                if (lastResult.Outcome != AgentRunOutcome.Completed)
+                {
+                    var comment = FailureCommentFormatter.Format(lastResult);
+                    await github.AddItemCommentAsync(item.ContentNodeId, comment, ct);
+                    await github.MoveItemAsync(item.ProjectItemId, ProjectState.InProgress, ProjectState.Ready, ct);
+
+                    state = state with
+                    {
+                        Phase = TaskPhase.Failed,
+                        LastError = SanitizeLastError(lastResult),
+                        UpdatedAtUtc = timeProvider.GetUtcNow()
+                    };
+                    taskStateStore.Set(state);
+
+                    logger.LogError(
+                        "Agent run failed during resumed review on round {Round}. {ItemId}",
+                        round, item.ProjectItemId);
+
+                    metrics.RecordTaskTerminated(success: false, toolCalls: lastResult.ToolCallsUsed);
+                    return new TaskExecutionResult(TaskOutcome.Failed);
+                }
+
+                await github.MoveItemAsync(item.ProjectItemId, ProjectState.InProgress, ProjectState.InReview, ct);
+
+                state = state with { Phase = TaskPhase.AwaitingReview, UpdatedAtUtc = timeProvider.GetUtcNow() };
+                taskStateStore.Set(state);
+
+                logger.LogInformation(
+                    "Re-submitted to review after resumed session. {ItemId} Round={Round}",
+                    item.ProjectItemId, round);
+
+                continue;
+            }
+
+            logger.LogInformation(
+                "PR review status {Review}; waiting. {ItemId}",
+                status.Review, item.ProjectItemId);
+        }
+
         return new TaskExecutionResult(TaskOutcome.Cancelled);
     }
 

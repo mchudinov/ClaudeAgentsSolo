@@ -1,3 +1,5 @@
+using DeveloperAgent.Actors;
+
 namespace DeveloperAgent.Lifecycle;
 
 /// <summary>
@@ -14,4 +16,12 @@ public interface ITaskStateStore
 
     /// <summary>Clears the current task state (marks the agent as idle).</summary>
     void Clear();
+
+    /// <summary>
+    /// Reads the durable <see cref="ProgrammingTaskState"/> that the actor persisted
+    /// for <paramref name="projectItemId"/>, or <see langword="null"/> when no durable
+    /// state is available (in-memory store or item never started).
+    /// Used once at startup to determine recovery action for in-flight items.
+    /// </summary>
+    Task<ProgrammingTaskState?> TryGetPersistedStateAsync(string projectItemId, CancellationToken ct);
 }

@@ -1,3 +1,4 @@
+using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
@@ -52,7 +53,7 @@ public sealed class AgentLifecycleServiceTests
 
     private AgentLifecycleService BuildService(
         IGitHubProjectService github,
-        TaskExecutor taskExecutor,
+        ITaskExecutor taskExecutor,
         ITaskStateStore stateStore,
         FakeTimeProvider timeProvider,
         ILogger<AgentLifecycleService>? logger = null,
@@ -65,14 +66,14 @@ public sealed class AgentLifecycleServiceTests
             stateStore,
             timeProvider);
 
-    private static TaskExecutor BuildTaskExecutor(
+    private static ITaskExecutor BuildTaskExecutor(
         IGitHubProjectService github,
         IWorkspaceManager workspaceMgr,
         IGitClient gitClient,
         IAgentRunner agentRunner,
         ITaskStateStore stateStore,
         FakeTimeProvider timeProvider) =>
-        new(NullLogger<TaskExecutor>.Instance,
+        new TaskExecutor(NullLogger<TaskExecutor>.Instance,
             OptionsFactory.Create(Options),
             github,
             workspaceMgr,
@@ -88,7 +89,7 @@ public sealed class AgentLifecycleServiceTests
         SynchronizationContext.SetSynchronizationContext(null);
 
         var github = Substitute.For<IGitHubProjectService>();
-        var stateStore = new InMemoryTaskStateStore();
+        var stateStore = Substitute.For<ITaskStateStore>();
         var timeProvider = new FakeTimeProvider();
         var logger = Substitute.For<ILogger<AgentLifecycleService>>();
 
@@ -98,11 +99,11 @@ public sealed class AgentLifecycleServiceTests
         github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
             .Returns((ProjectItem?)null);
 
-        // Use a stub TaskExecutor (won't be called)
-        var workspaceMgr = Substitute.For<IWorkspaceManager>();
-        var gitClient = Substitute.For<IGitClient>();
-        var agentRunner = Substitute.For<IAgentRunner>();
-        var taskExecutor = BuildTaskExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+        // Both items have no persisted actor state — recovery skips them (InMemory returns null)
+        stateStore.TryGetPersistedStateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((ProgrammingTaskState?)null);
+
+        var taskExecutor = Substitute.For<ITaskExecutor>();
 
         var service = new AgentLifecycleService(
             logger,
@@ -120,7 +121,7 @@ public sealed class AgentLifecycleServiceTests
         // Let the service start (GetInFlightItemsAsync is called before the timer loop)
         await Task.Delay(50);
 
-        // Logger should have been called with LogWarning for the in-flight items
+        // Logger should have been called with LogWarning for the in-flight items that have no state
         logger.Received().Log(
             LogLevel.Warning,
             Arg.Any<EventId>(),
@@ -128,9 +129,193 @@ public sealed class AgentLifecycleServiceTests
             Arg.Any<Exception?>(),
             Arg.Any<Func<object, Exception?, string>>());
 
-        // TaskExecutor.RunAsync should NOT be called for the in-flight items
-        // (they are skipped, not executed)
-        await agentRunner.DidNotReceive().RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>());
+        // TaskExecutor.RunAsync should NOT be called for in-flight items with no persisted state
+        await taskExecutor.DidNotReceive().RunAsync(Arg.Any<ProjectItem>(), Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Recovery_InProgress_no_PR_resumes_agent_run()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var timeProvider = new FakeTimeProvider();
+        var taskExecutor = Substitute.For<ITaskExecutor>();
+
+        var item = MakeItem("item-1") with { State = ProjectState.InProgress };
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(new[] { item });
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns((ProjectItem?)null);
+
+        var actorState = new ProgrammingTaskState(
+            ProjectItemId: "item-1",
+            AgentId: "agent-1",
+            Phase: TaskPhase.AgentRunning,
+            BranchName: "agent/add-feature-x",
+            PullRequestNumber: null,
+            RetryCount: 0,
+            ApprovalStatus: ApprovalStatus.None);
+
+        stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>())
+            .Returns(actorState);
+
+        taskExecutor.RunAsync(Arg.Any<ProjectItem>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskExecutionResult(TaskOutcome.Done));
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(150);
+
+        await taskExecutor.Received(1).RunAsync(
+            Arg.Is<ProjectItem>(p => p.ProjectItemId == "item-1"),
+            Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Recovery_InProgress_with_PR_resumes_agent_run()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var timeProvider = new FakeTimeProvider();
+        var taskExecutor = Substitute.For<ITaskExecutor>();
+
+        var item = MakeItem("item-1") with { State = ProjectState.InProgress };
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(new[] { item });
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns((ProjectItem?)null);
+
+        var actorState = new ProgrammingTaskState(
+            ProjectItemId: "item-1",
+            AgentId: "agent-1",
+            Phase: TaskPhase.AgentRunning,
+            BranchName: "agent/add-feature-x",
+            PullRequestNumber: 7,
+            RetryCount: 0,
+            ApprovalStatus: ApprovalStatus.ChangesRequested);
+
+        stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>())
+            .Returns(actorState);
+
+        taskExecutor.RunAsync(Arg.Any<ProjectItem>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskExecutionResult(TaskOutcome.Done));
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(150);
+
+        await taskExecutor.Received(1).RunAsync(
+            Arg.Is<ProjectItem>(p => p.ProjectItemId == "item-1"),
+            Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Recovery_InReview_PR_open_enters_review_wait()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var timeProvider = new FakeTimeProvider();
+        var taskExecutor = Substitute.For<ITaskExecutor>();
+
+        var item = MakeItem("item-1") with { State = ProjectState.InReview };
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(new[] { item });
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns((ProjectItem?)null);
+
+        var actorState = new ProgrammingTaskState(
+            ProjectItemId: "item-1",
+            AgentId: "agent-1",
+            Phase: TaskPhase.AwaitingReview,
+            BranchName: "agent/add-feature-x",
+            PullRequestNumber: 7,
+            RetryCount: 0,
+            ApprovalStatus: ApprovalStatus.WaitingForReview);
+
+        stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>())
+            .Returns(actorState);
+
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+
+        taskExecutor.ResumeReviewAsync(Arg.Any<ProjectItem>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskExecutionResult(TaskOutcome.Done));
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(150);
+
+        await taskExecutor.Received(1).ResumeReviewAsync(
+            Arg.Is<ProjectItem>(p => p.ProjectItemId == "item-1"),
+            7,
+            Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Recovery_InReview_PR_merged_out_of_band_moves_to_Done()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var timeProvider = new FakeTimeProvider();
+        var taskExecutor = Substitute.For<ITaskExecutor>();
+
+        var item = MakeItem("item-1") with { State = ProjectState.InReview };
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(new[] { item });
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns((ProjectItem?)null);
+
+        var actorState = new ProgrammingTaskState(
+            ProjectItemId: "item-1",
+            AgentId: "agent-1",
+            Phase: TaskPhase.AwaitingReview,
+            BranchName: "agent/add-feature-x",
+            PullRequestNumber: 7,
+            RetryCount: 0,
+            ApprovalStatus: ApprovalStatus.WaitingForReview);
+
+        stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>())
+            .Returns(actorState);
+
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc"));
+
+        var service = BuildService(github, taskExecutor, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(150);
+
+        await github.Received(1).MoveItemAsync(
+            "item-1",
+            ProjectState.InReview,
+            ProjectState.Done,
+            Arg.Any<CancellationToken>());
+
+        await taskExecutor.DidNotReceive().RunAsync(Arg.Any<ProjectItem>(), Arg.Any<CancellationToken>());
+        await taskExecutor.DidNotReceive().ResumeReviewAsync(Arg.Any<ProjectItem>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
 
         cts.Cancel();
     }

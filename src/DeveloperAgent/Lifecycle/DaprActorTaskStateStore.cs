@@ -142,6 +142,16 @@ public sealed class DaprActorTaskStateStore : ITaskStateStore
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ProgrammingTaskState?> TryGetPersistedStateAsync(string projectItemId, CancellationToken ct)
+    {
+        var actor = _proxyFactory.CreateActorProxy<IProgrammingTaskActor>(
+            new ActorId(projectItemId),
+            nameof(ProgrammingTaskActor));
+
+        return await actor.GetStateAsync();
+    }
+
     private void ClaimOrThrow(IProgrammingTaskActor actor, string projectItemId)
     {
         var claimed = actor.TryClaimAsync(_agentId).GetAwaiter().GetResult();
