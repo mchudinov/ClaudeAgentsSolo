@@ -8,6 +8,9 @@ using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Resilience;
 using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
+using Dapr.Workflow;
+using DeveloperAgent.Workflow;
+using DeveloperAgent.Workflow.Activities;
 using DeveloperAgent.Workspace;
 using Library;
 using Microsoft.Extensions.Http.Resilience;
@@ -208,6 +211,26 @@ public class Program
             // Step-11 will wire ITaskStateStore to call this actor; for now the
             // registration alone is enough for the actor handlers to be served.
             builder.Services.AddActors(opt => opt.Actors.RegisterActor<ProgrammingTaskActor>());
+
+            // ── Dapr Workflow (Step-13, P2-D part 1/3) ───────────────────────────
+            // DeveloperTaskWorkflow drives the full lifecycle of a single GitHub
+            // project item. Workflow instance ID convention:
+            //   "github-project-item-{itemId}"
+            // The dispatcher (Step-14, P2-D part 2/3) will schedule new instances.
+            builder.Services.AddDaprWorkflow(opt =>
+            {
+                opt.RegisterWorkflow<DeveloperTaskWorkflow>();
+                opt.RegisterActivity<AcquireTaskActivity>();
+                opt.RegisterActivity<CreateBranchActivity>();
+                opt.RegisterActivity<PlanActivity>();
+                opt.RegisterActivity<ModifyCodeActivity>();
+                opt.RegisterActivity<BuildActivity>();
+                opt.RegisterActivity<TestActivity>();
+                opt.RegisterActivity<CreatePullRequestActivity>();
+                opt.RegisterActivity<WaitForReviewActivity>();
+                opt.RegisterActivity<DoneActivity>();
+                opt.RegisterActivity<CompactMemoryActivity>();
+            });
 
             // ── UI ────────────────────────────────────────────────────────────────
             builder.Services.AddRazorComponents()
