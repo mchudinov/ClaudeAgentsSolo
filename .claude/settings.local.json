@@ -36,7 +36,22 @@
       "PowerShell(git branch --show-current; git status -s; \"--- commits on branch ---\"; git log origin/main..HEAD --oneline; \"--- main untouched ---\"; git log main --oneline -1; \"--- diff stat ---\"; git diff origin/main..HEAD --stat)",
       "PowerShell(gh pr *)",
       "PowerShell(git *)",
-      "Bash(dotnet msbuild *)"
+      "Bash(dotnet msbuild *)",
+      "mcp__github__search_issues",
+      "Bash(gh project *)",
+      "Bash(python -c \"import sys,json; items=json.load\\(sys.stdin\\)['items']; [print\\(f'{i[\\\\\"id\\\\\"]} | {i.get\\(\\\\\"title\\\\\",\\\\\"\\\\\"\\)} | {i.get\\(\\\\\"status\\\\\",\\\\\"\\\\\"\\)}'\\) for i in items if 'Step-12' in i.get\\('title',''\\)]\")",
+      "Bash(gh issue *)",
+      "Bash(gh auth *)",
+      "Bash(gh api *)",
+      "Bash(gh pr *)",
+      "Bash(python -c \"import sys,json; items=json.load\\(sys.stdin\\)['items']; [print\\(i['id'], i.get\\('title',''\\)\\) for i in items if 'Step-13' in i.get\\('title',''\\)]\")",
+      "Bash(dotnet --version)",
+      "Bash(dotnet nuget *)",
+      "Bash(dotnet add *)",
+      "Bash(dotnet script *)",
+      "Bash(dotnet fsi *)",
+      "Bash(grep -A 10 \"WorkflowActivity\\\\`2\\\\|Workflow\\\\`2\\\\|AddDaprWorkflow\\\\|WorkflowOptions\\\\|RegisterWorkflow\\\\|RegisterActivity\")",
+      "Bash(grep -A 20 \"RegisterActivity\\\\`\\\\`1\")"
     ]
   }
 }
