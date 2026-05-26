@@ -37,13 +37,18 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
     [InlineData(typeof(WaitForReviewActivity))]
     [InlineData(typeof(DoneActivity))]
     [InlineData(typeof(CompactMemoryActivity))]
-    public void Activity_is_assignable_to_WorkflowActivity_of_TaskInput_objectNullable(Type activityType)
+    public void Activity_extends_WorkflowActivity_open_generic(Type activityType)
     {
-        activityType
-            .Should()
-            .BeAssignableTo<WorkflowActivity<TaskInput, object?>>(
-                because: $"{activityType.Name} must extend WorkflowActivity<TaskInput, object?> " +
-                         "so that Dapr can discover and invoke it");
+        // Each activity uses its own specific typed input/output, so we check the open generic base
+        // rather than WorkflowActivity<TaskInput, object?> (generics are invariant).
+        var baseType = activityType.BaseType;
+        var extendsWorkflowActivity = baseType is not null
+            && baseType.IsGenericType
+            && baseType.GetGenericTypeDefinition() == typeof(WorkflowActivity<,>);
+
+        extendsWorkflowActivity.Should().BeTrue(
+            because: $"{activityType.Name} must extend WorkflowActivity<TInput, TOutput> " +
+                     "so that Dapr can discover and invoke it");
     }
 
     // ── Model record shapes ──────────────────────────────────────────────────

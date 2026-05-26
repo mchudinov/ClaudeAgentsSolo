@@ -1,6 +1,8 @@
+using Dapr.Workflow;
 using DeveloperAgent.Actors;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Workflow;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,20 +11,26 @@ namespace DeveloperAgent.Lifecycle;
 
 /// <summary>
 /// Long-running hosted service that polls for ready GitHub Project items and
-/// drives each one through the per-item state machine via <see cref="ITaskExecutor"/>.
-/// Sequential: one item at a time. Next item is picked on the next timer tick.
+/// schedules a <see cref="DeveloperTaskWorkflow"/> instance per item via
+/// <see cref="IDaprWorkflowClient"/>. Workflow instance ID convention:
+/// <c>github-project-item-{projectItemId}</c>.
+/// Sequential: one item is dispatched per poll tick. Next item is picked on the next tick.
 /// </summary>
 public sealed class AgentLifecycleService(
     ILogger<AgentLifecycleService> logger,
     IOptions<AgentOptions> agentOptions,
     IOptions<GitHubOptions> gitHubOptions,
     IGitHubProjectService github,
-    ITaskExecutor taskExecutor,
+    IDaprWorkflowClient daprWorkflowClient,
     ITaskStateStore taskStateStore,
     TimeProvider timeProvider) : BackgroundService
 {
     private readonly AgentOptions _options = agentOptions.Value;
     private readonly GitHubOptions _gitHubOptions = gitHubOptions.Value;
+
+    /// <summary>Workflow instance ID convention used by the lifecycle service.</summary>
+    public static string WorkflowInstanceId(string projectItemId) =>
+        $"github-project-item-{projectItemId}";
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,9 +103,9 @@ public sealed class AgentLifecycleService(
         }
 
         // ── Startup: recover in-flight items ─────────────────────────────────
-        // Enumerate items in InProgress / InReview and resume each one based on
-        // its persisted actor state. Errors per item are logged but do not crash
-        // the service — the poll loop starts regardless.
+        // Enumerate items in InProgress / InReview. For each, check persisted actor state
+        // and schedule (or skip) a workflow instance accordingly.
+        // Errors per item are logged but do not crash the service — the poll loop starts regardless.
         try
         {
             var inFlight = await github.GetInFlightItemsAsync(stoppingToken);
@@ -167,47 +175,21 @@ public sealed class AgentLifecycleService(
                         continue;
                     }
 
+                    // InReview with open PR — reschedule workflow to resume from where it left off.
                     logger.LogInformation(
-                        "Resuming review wait for in-flight item. {ItemId} PR#{PrNumber}",
+                        "Rescheduling workflow for in-flight InReview item. {ItemId} PR#{PrNumber}",
                         item.ProjectItemId, prNumber);
 
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await taskExecutor.ResumeReviewAsync(item, prNumber, stoppingToken);
-                        }
-                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-                        catch (Exception ex)
-                        {
-                            logger.LogError(ex,
-                                "Recovery ResumeReviewAsync failed for {ItemId}. Message={Message}",
-                                item.ProjectItemId, ex.Message);
-                        }
-                    }, stoppingToken);
-
+                    await ScheduleWorkflowAsync(item, stoppingToken);
                     continue;
                 }
 
-                // InProgress (with or without PR) or InReview without a known PR number → re-run from scratch.
+                // InProgress (with or without PR) or InReview without a known PR number → re-schedule from scratch.
                 logger.LogInformation(
-                    "Re-running agent for in-flight item after restart. {ItemId} Phase={Phase} PR={PR}",
+                    "Rescheduling workflow for in-flight item after restart. {ItemId} Phase={Phase} PR={PR}",
                     item.ProjectItemId, actorState.Phase, actorState.PullRequestNumber);
 
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await taskExecutor.RunAsync(item, stoppingToken);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex,
-                            "Recovery RunAsync failed for {ItemId}. Message={Message}",
-                            item.ProjectItemId, ex.Message);
-                    }
-                }, stoppingToken);
+                await ScheduleWorkflowAsync(item, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -268,7 +250,7 @@ public sealed class AgentLifecycleService(
 
             try
             {
-                await taskExecutor.RunAsync(item, stoppingToken);
+                await ScheduleWorkflowAsync(item, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -277,7 +259,7 @@ public sealed class AgentLifecycleService(
             catch (Exception ex)
             {
                 logger.LogError(ex,
-                    "Task {ItemId} failed unexpectedly. Message={Message}",
+                    "Failed to schedule workflow for {ItemId}. Message={Message}",
                     item.ProjectItemId, ex.Message);
 
                 try
@@ -309,10 +291,26 @@ public sealed class AgentLifecycleService(
                         item.ProjectItemId);
                 }
             }
-            finally
-            {
-                taskStateStore.Clear();
-            }
         }
+    }
+
+    private async Task ScheduleWorkflowAsync(GitHub.ProjectItem item, CancellationToken ct)
+    {
+        var instanceId = WorkflowInstanceId(item.ProjectItemId);
+        var input = new TaskInput(
+            ProjectItemId: item.ProjectItemId,
+            ContentNodeId: item.ContentNodeId,
+            ContentNumber: item.ContentNumber,
+            Title: item.Title,
+            BodyMarkdown: item.BodyMarkdown);
+
+        await daprWorkflowClient.ScheduleNewWorkflowAsync(
+            name: nameof(DeveloperTaskWorkflow),
+            instanceId: instanceId,
+            input: input);
+
+        logger.LogInformation(
+            "Workflow scheduled. instanceId={InstanceId} item={ItemId}",
+            instanceId, item.ProjectItemId);
     }
 }

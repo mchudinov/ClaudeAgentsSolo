@@ -1,22 +1,57 @@
 using Dapr.Workflow;
+using DeveloperAgent.Lifecycle;
+using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging;
 
 namespace DeveloperAgent.Workflow.Activities;
 
 /// <summary>
-/// Creates a Git branch for the task and prepares the workspace.
-/// Placeholder — P2-D part 2/3 will migrate TaskExecutor logic here.
+/// Creates a Git branch and prepares the per-task workspace.
+/// Updates state to <see cref="TaskPhase.WorkspaceReady"/>.
+/// Returns <see cref="CreateBranchResult"/> containing the workspace repo path and default branch.
 /// </summary>
-public sealed class CreateBranchActivity : WorkflowActivity<TaskInput, object?>
+public sealed class CreateBranchActivity : WorkflowActivity<CreateBranchActivityInput, CreateBranchResult>
 {
     private readonly ILogger<CreateBranchActivity> _logger;
+    private readonly IWorkspaceManager _workspaceManager;
+    private readonly IGitClient _gitClient;
+    private readonly ITaskStateStore _taskStateStore;
 
-    public CreateBranchActivity(ILogger<CreateBranchActivity> logger) => _logger = logger;
-
-    public override Task<object?> RunAsync(WorkflowActivityContext context, TaskInput input)
+    public CreateBranchActivity(
+        ILogger<CreateBranchActivity> logger,
+        IWorkspaceManager workspaceManager,
+        IGitClient gitClient,
+        ITaskStateStore taskStateStore)
     {
-        // placeholder — P2-D part 2/3 will migrate TaskExecutor logic here
-        _logger.LogInformation("[{Activity}] item={ItemId}", nameof(CreateBranchActivity), input.ProjectItemId);
-        return Task.FromResult<object?>(null);
+        _logger = logger;
+        _workspaceManager = workspaceManager;
+        _gitClient = gitClient;
+        _taskStateStore = taskStateStore;
+    }
+
+    public override async Task<CreateBranchResult> RunAsync(
+        WorkflowActivityContext context, CreateBranchActivityInput input)
+    {
+        var ct = CancellationToken.None;
+
+        var ws = await _workspaceManager.PrepareAsync(input.ProjectItemId, input.BranchName, ct);
+        await _gitClient.CheckoutNewBranchAsync(ws, ct);
+
+        var current = _taskStateStore.Current;
+        if (current is not null)
+        {
+            _taskStateStore.Set(current with
+            {
+                Phase = TaskPhase.WorkspaceReady,
+                BranchName = input.BranchName,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+
+        _logger.LogInformation(
+            "[{Activity}] item={ItemId} branch={Branch} repoRoot={RepoRoot} defaultBranch={DefaultBranch}",
+            nameof(CreateBranchActivity), input.ProjectItemId, input.BranchName, ws.RepoRoot, ws.DefaultBranch);
+
+        return new CreateBranchResult(ws.RepoRoot, ws.DefaultBranch);
     }
 }
