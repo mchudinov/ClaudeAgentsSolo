@@ -1,3 +1,5 @@
+using DeveloperAgent.Actors;
+
 namespace DeveloperAgent.Lifecycle;
 
 /// <summary>
@@ -34,4 +36,9 @@ public sealed class InMemoryTaskStateStore : ITaskStateStore
         lock (_lock)
             _current = null;
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Always returns <see langword="null"/>: no durable state survives in-process.</remarks>
+    public Task<ProgrammingTaskState?> TryGetPersistedStateAsync(string projectItemId, CancellationToken ct) =>
+        Task.FromResult<ProgrammingTaskState?>(null);
 }

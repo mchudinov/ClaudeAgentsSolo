@@ -364,6 +364,121 @@ public sealed class TaskExecutorTests
     }
 
     [Fact]
+    public async Task ResumeReviewAsync_approved_and_merged_moves_item_to_Done()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+
+        var item = MakeItem() with { State = ProjectState.InReview };
+
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc"));
+
+        var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var runTask = executor.ResumeReviewAsync(item, pullRequestNumber: 7, cts.Token);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+        var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        result.Outcome.Should().Be(TaskOutcome.Done);
+
+        await github.Received(1).MoveItemAsync(
+            item.ProjectItemId,
+            ProjectState.InReview,
+            ProjectState.Done,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResumeReviewAsync_changes_requested_reruns_agent_then_resubmits()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+
+        var item = MakeItem() with { State = ProjectState.InReview };
+        var newPr = MakePr(number: 7);
+
+        var callCount = 0;
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? new PullRequestStatus(7, PullRequestReviewState.ChangesRequested, false, false, "abc")
+                    : new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc");
+            });
+
+        github.GetReviewFeedbackSinceAsync(7, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns("Please fix the tests.");
+
+        var ws = MakeWorkspace();
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ws);
+        agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentRunResult(AgentRunOutcome.Completed, newPr, 5, 10, null));
+
+        var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var runTask = executor.ResumeReviewAsync(item, pullRequestNumber: 7, cts.Token);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+
+        var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        result.Outcome.Should().Be(TaskOutcome.Done);
+        await agentRunner.Received(1).RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResumeReviewAsync_cancellation_returns_Cancelled()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var workspaceMgr = Substitute.For<IWorkspaceManager>();
+        var gitClient = Substitute.For<IGitClient>();
+        var agentRunner = Substitute.For<IAgentRunner>();
+        var stateStore = new InMemoryTaskStateStore();
+        var timeProvider = new FakeTimeProvider();
+
+        var item = MakeItem() with { State = ProjectState.InReview };
+
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+
+        var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        var runTask = executor.ResumeReviewAsync(item, pullRequestNumber: 7, cts.Token);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(50);
+
+        cts.Cancel();
+
+        var ex = await Record.ExceptionAsync(() => runTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        if (ex is not null)
+            ex.Should().BeOfType<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task LastReviewPolledAtUtc_advances_only_after_successful_feedback_fetch()
     {
         SynchronizationContext.SetSynchronizationContext(null);

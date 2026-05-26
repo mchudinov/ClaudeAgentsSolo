@@ -1,3 +1,4 @@
+using DeveloperAgent.Actors;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using Microsoft.Extensions.Hosting;
@@ -8,7 +9,7 @@ namespace DeveloperAgent.Lifecycle;
 
 /// <summary>
 /// Long-running hosted service that polls for ready GitHub Project items and
-/// drives each one through the per-item state machine via <see cref="TaskExecutor"/>.
+/// drives each one through the per-item state machine via <see cref="ITaskExecutor"/>.
 /// Sequential: one item at a time. Next item is picked on the next timer tick.
 /// </summary>
 public sealed class AgentLifecycleService(
@@ -16,7 +17,7 @@ public sealed class AgentLifecycleService(
     IOptions<AgentOptions> agentOptions,
     IOptions<GitHubOptions> gitHubOptions,
     IGitHubProjectService github,
-    TaskExecutor taskExecutor,
+    ITaskExecutor taskExecutor,
     ITaskStateStore taskStateStore,
     TimeProvider timeProvider) : BackgroundService
 {
@@ -93,25 +94,120 @@ public sealed class AgentLifecycleService(
                 "Message={Message}", ex.Message);
         }
 
-        // ── Startup: log any items already in-flight (phase-1 skips recovery) ──
-        // Tolerate misconfiguration here so dotnet run boots even without real GitHub
-        // credentials. The per-tick loop below catches its own exceptions and degrades
-        // gracefully (item-by-item failure handling).
+        // ── Startup: recover in-flight items ─────────────────────────────────
+        // Enumerate items in InProgress / InReview and resume each one based on
+        // its persisted actor state. Errors per item are logged but do not crash
+        // the service — the poll loop starts regardless.
         try
         {
             var inFlight = await github.GetInFlightItemsAsync(stoppingToken);
-            if (inFlight.Count > 0)
+            foreach (var item in inFlight)
             {
-                logger.LogWarning(
-                    "Items already in InProgress/InReview at startup; skipping in phase 1 (recovery is phase 2). Count={Count}",
-                    inFlight.Count);
+                ProgrammingTaskState? actorState;
+                try
+                {
+                    actorState = await taskStateStore.TryGetPersistedStateAsync(item.ProjectItemId, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Could not read persisted state for in-flight item {ItemId}; skipping recovery. Message={Message}",
+                        item.ProjectItemId, ex.Message);
+                    continue;
+                }
 
-                foreach (var item in inFlight)
+                if (actorState is null)
                 {
                     logger.LogWarning(
-                        "In-flight item skipped. {ItemId} {IssueNumber} {Title} {State}",
+                        "In-flight item has no persisted actor state; skipping. {ItemId} {IssueNumber} {Title} {State}",
                         item.ProjectItemId, item.ContentNumber, item.Title, item.State);
+                    continue;
                 }
+
+                if (item.State == ProjectState.InReview &&
+                    actorState.PullRequestNumber is int prNumber)
+                {
+                    PullRequestStatus status;
+                    try
+                    {
+                        status = await github.GetPullRequestStatusAsync(prNumber, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex,
+                            "Could not read PR status for in-flight item {ItemId} PR#{PrNumber}; skipping recovery. Message={Message}",
+                            item.ProjectItemId, prNumber, ex.Message);
+                        continue;
+                    }
+
+                    if (status.Merged)
+                    {
+                        logger.LogInformation(
+                            "PR merged out-of-band before restart; closing out. {ItemId} PR#{PrNumber}",
+                            item.ProjectItemId, prNumber);
+
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await github.MoveItemAsync(
+                                    item.ProjectItemId,
+                                    ProjectState.InReview,
+                                    ProjectState.Done,
+                                    stoppingToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogError(ex,
+                                    "Failed to move out-of-band merged item {ItemId} to Done. Message={Message}",
+                                    item.ProjectItemId, ex.Message);
+                            }
+                        }, stoppingToken);
+
+                        continue;
+                    }
+
+                    logger.LogInformation(
+                        "Resuming review wait for in-flight item. {ItemId} PR#{PrNumber}",
+                        item.ProjectItemId, prNumber);
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await taskExecutor.ResumeReviewAsync(item, prNumber, stoppingToken);
+                        }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex,
+                                "Recovery ResumeReviewAsync failed for {ItemId}. Message={Message}",
+                                item.ProjectItemId, ex.Message);
+                        }
+                    }, stoppingToken);
+
+                    continue;
+                }
+
+                // InProgress (with or without PR) or InReview without a known PR number → re-run from scratch.
+                logger.LogInformation(
+                    "Re-running agent for in-flight item after restart. {ItemId} Phase={Phase} PR={PR}",
+                    item.ProjectItemId, actorState.Phase, actorState.PullRequestNumber);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await taskExecutor.RunAsync(item, stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex,
+                            "Recovery RunAsync failed for {ItemId}. Message={Message}",
+                            item.ProjectItemId, ex.Message);
+                    }
+                }, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

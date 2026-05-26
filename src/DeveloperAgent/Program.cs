@@ -199,7 +199,7 @@ public class Program
             builder.Services.AddSingleton<ITaskStateStore>(sp => new DaprActorTaskStateStore(
                 sp.GetRequiredService<Dapr.Actors.Client.IActorProxyFactory>(),
                 Environment.MachineName));
-            builder.Services.AddSingleton<TaskExecutor>();
+            builder.Services.AddSingleton<ITaskExecutor, TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
 
             // ── Dapr Actors ───────────────────────────────────────────────────────
