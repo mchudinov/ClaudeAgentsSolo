@@ -29,7 +29,7 @@ var resiliency = builder
         "resiliency",
         new DaprComponentOptions { LocalPath = resiliencyYamlPath });
 
-builder.AddProject<Projects.DeveloperAgent>("web")
+builder.AddProject<Projects.DeveloperAgent>("DeveloperAgent")
     .WithReference(agentState)
     .WaitFor(agentState)
     .WithDaprSidecar(sidecar => sidecar

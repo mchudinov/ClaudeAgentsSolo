@@ -44,26 +44,26 @@ public sealed class AppHostResourceRegistrationTests
     }
 
     [Fact]
-    public async Task Web_project_references_agent_state_resource()
+    public async Task DeveloperAgent_project_references_agent_state_resource()
     {
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var web = model.Resources.SingleOrDefault(r => r.Name == "web");
-        web.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'web'");
+        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
+        DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
 
-        var annotations = web!.Annotations.ToList();
+        var annotations = DeveloperAgent!.Annotations.ToList();
 
         // The .WithReference(agentState) call adds an environment-callback annotation
         // whose state references the 'agent-state' resource by name or instance, and
         // the .WaitFor(agentState) call adds an annotation that holds a reference to
         // the awaited resource. We assert with a reflective scan so the test is robust
-        // across Aspire 13.x annotation-type renames: at least one annotation on 'web'
+        // across Aspire 13.x annotation-type renames: at least one annotation on 'DeveloperAgent'
         // must transitively reference the 'agent-state' resource.
         var referencesAgentState = annotations.Any(a => AnnotationReferencesResource(a, "agent-state"));
 
         referencesAgentState.Should().BeTrue(
-            because: "the 'web' project must declare a reference to the 'agent-state' " +
+            because: "the 'DeveloperAgent' project must declare a reference to the 'agent-state' " +
                      "Redis resource (via WithReference and/or WaitFor) so that the Aspire " +
                      "orchestrator injects the connection string and orders startup. " +
                      "Annotation types present: {0}",
@@ -109,28 +109,28 @@ public sealed class AppHostResourceRegistrationTests
     }
 
     [Fact]
-    public async Task Web_project_has_dapr_sidecar_annotation()
+    public async Task DeveloperAgent_project_has_dapr_sidecar_annotation()
     {
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var web = model.Resources.SingleOrDefault(r => r.Name == "web");
-        web.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'web'");
+        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
+        DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
 
-        var annotations = web!.Annotations.ToList();
+        var annotations = DeveloperAgent!.Annotations.ToList();
 
         // .WithDaprSidecar(sidecar => sidecar.WithReference(stateStore)) wires a sidecar
-        // onto 'web' and associates the 'agent-state-store' Dapr component with that
-        // sidecar. The DaprSidecarAnnotation on 'web' references the IDaprSidecarResource,
+        // onto 'DeveloperAgent' and associates the 'agent-state-store' Dapr component with that
+        // sidecar. The DaprSidecarAnnotation on 'DeveloperAgent' references the IDaprSidecarResource,
         // which in turn carries a DaprComponentReferenceAnnotation pointing at the
         // state-store resource. The walker is given a generous depth so it can follow:
-        //   web -> DaprSidecarAnnotation -> SidecarResource -> Annotations collection
+        //   DeveloperAgent -> DaprSidecarAnnotation -> SidecarResource -> Annotations collection
         //        -> DaprComponentReferenceAnnotation -> Component -> "agent-state-store"
         var referencesStateStore = annotations.Any(a =>
             AnnotationReferencesResource(a, "agent-state-store", maxDepth: 6));
 
         referencesStateStore.Should().BeTrue(
-            because: "the 'web' project must declare a Dapr sidecar that references the " +
+            because: "the 'DeveloperAgent' project must declare a Dapr sidecar that references the " +
                      "'agent-state-store' state-store component (via WithDaprSidecar + " +
                      "sidecar.WithReference(stateStore)). Annotation types present: {0}",
             string.Join(", ", annotations.Select(a => a.GetType().Name)));
@@ -151,24 +151,24 @@ public sealed class AppHostResourceRegistrationTests
     }
 
     [Fact]
-    public async Task Web_dapr_sidecar_references_resiliency_default_component()
+    public async Task DeveloperAgent_dapr_sidecar_references_resiliency_default_component()
     {
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var web = model.Resources.SingleOrDefault(r => r.Name == "web");
-        web.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'web'");
+        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
+        DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
 
-        var annotations = web!.Annotations.ToList();
+        var annotations = DeveloperAgent!.Annotations.ToList();
 
         // Same walker pattern as the state-store assertion above — the sidecar
-        // chain is: web -> DaprSidecarAnnotation -> SidecarResource -> Annotations
+        // chain is: DeveloperAgent -> DaprSidecarAnnotation -> SidecarResource -> Annotations
         // -> DaprComponentReferenceAnnotation -> Component(resiliency-default).
         var referencesResiliency = annotations.Any(a =>
             AnnotationReferencesResource(a, "resiliency-default", maxDepth: 6));
 
         referencesResiliency.Should().BeTrue(
-            because: "the 'web' project's Dapr sidecar must reference the " +
+            because: "the 'DeveloperAgent' project's Dapr sidecar must reference the " +
                      "'resiliency-default' component (via WithDaprSidecar + " +
                      "sidecar.WithReference(resiliency)) so daprd loads the Resiliency " +
                      "CRD at startup. Annotation types present: {0}",
@@ -192,7 +192,7 @@ public sealed class AppHostResourceRegistrationTests
     /// simple <c>WaitFor</c>/<c>WithReference</c> wiring; pass a larger
     /// <paramref name="maxDepth"/> for chained wiring like
     /// <c>WithDaprSidecar(sidecar =&gt; sidecar.WithReference(component))</c>,
-    /// which puts the target resource two levels deeper (web → sidecar →
+    /// which puts the target resource two levels deeper (DeveloperAgent → sidecar →
     /// component annotation → component).
     /// </summary>
     private static bool AnnotationReferencesResource(
