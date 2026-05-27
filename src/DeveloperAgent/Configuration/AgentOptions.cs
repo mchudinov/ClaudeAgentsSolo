@@ -23,4 +23,17 @@ public sealed record AgentOptions
 
     /// <summary>Hard cap on consecutive model turns before the agent is halted.</summary>
     public int MaxModelTurnsHardCap { get; init; } = 40;
+
+    /// <summary>
+    /// Maximum number of attempts (including the first one) that the Dapr Workflow
+    /// engine will make for any activity call. Applied via <c>WorkflowRetryPolicy</c>
+    /// on every <c>CallActivityAsync</c> in <see cref="DeveloperAgent.Workflow.DeveloperTaskWorkflow"/>.
+    /// </summary>
+    public int MaxRetryAttempts { get; init; } = 3;
+
+    /// <summary>
+    /// Delay (seconds) between the first and second attempt of an activity. Subsequent
+    /// retries use exponential back-off (coefficient 2.0, capped at 60 seconds).
+    /// </summary>
+    public int FirstRetryIntervalSeconds { get; init; } = 2;
 }

@@ -8,20 +8,41 @@ namespace DeveloperAgent.Workflow.Activities;
 /// Polls the GitHub PR once for its review status.
 /// When the review state is <see cref="PullRequestReviewState.ChangesRequested"/>,
 /// fetches review feedback from the beginning of the PR's review history.
-/// The workflow loop calls this activity repeatedly (via <c>CreateTimer</c> between calls).
+/// The workflow loop calls this activity repeatedly (via <c>CreateTimer</c> between calls,
+/// or in response to external events).
 /// Returns <see cref="WaitForReviewResult"/> describing the current review state.
 /// </summary>
+/// <remarks>
+/// In addition to returning the status to its caller, the activity raises a workflow
+/// external event back to the calling workflow instance so the workflow's
+/// <c>WaitForExternalEventAsync</c> arms can win the next race:
+/// <list type="bullet">
+///   <item><c>ChangesRequested</c> when the PR review state is ChangesRequested.</item>
+///   <item><c>Merged</c> when the PR is merged AND approved.</item>
+///   <item>No event is raised for Pending — the workflow's timer arm wins instead.</item>
+/// </list>
+/// The workflow instance ID is taken from <see cref="WorkflowActivityContext.InstanceId"/>.
+/// </remarks>
 public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivityInput, WaitForReviewResult>
 {
+    /// <summary>Event name raised when the PR has been marked ChangesRequested.</summary>
+    public const string ChangesRequestedEventName = "ChangesRequested";
+
+    /// <summary>Event name raised when the PR has been merged with an Approved review.</summary>
+    public const string MergedEventName = "Merged";
+
     private readonly ILogger<WaitForReviewActivity> _logger;
     private readonly IGitHubProjectService _github;
+    private readonly IDaprWorkflowClient _workflowClient;
 
     public WaitForReviewActivity(
         ILogger<WaitForReviewActivity> logger,
-        IGitHubProjectService github)
+        IGitHubProjectService github,
+        IDaprWorkflowClient workflowClient)
     {
         _logger = logger;
         _github = github;
+        _workflowClient = workflowClient;
     }
 
     public override async Task<WaitForReviewResult> RunAsync(
@@ -45,6 +66,27 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
                 input.PullRequestNumber,
                 DateTimeOffset.MinValue,
                 ct);
+        }
+
+        // Raise external event back to the parent workflow instance so the workflow's
+        // WaitForExternalEventAsync arm wins immediately rather than waiting for the timer.
+        // Pending → raise nothing (workflow's timer arm drives cadence).
+        var payload = new ReviewEventPayload(input.PullRequestNumber);
+        if (status.Merged && status.Review == PullRequestReviewState.Approved)
+        {
+            await _workflowClient.RaiseEventAsync(
+                instanceId: context.InstanceId,
+                eventName: MergedEventName,
+                eventPayload: payload,
+                cancellation: ct);
+        }
+        else if (status.Review == PullRequestReviewState.ChangesRequested)
+        {
+            await _workflowClient.RaiseEventAsync(
+                instanceId: context.InstanceId,
+                eventName: ChangesRequestedEventName,
+                eventPayload: payload,
+                cancellation: ct);
         }
 
         return new WaitForReviewResult(

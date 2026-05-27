@@ -244,7 +244,7 @@ public sealed class AgentLifecycleServiceTests
     }
 
     [Fact]
-    public async Task Recovery_InReview_PR_merged_out_of_band_moves_to_Done()
+    public async Task Recovery_InReview_PR_merged_out_of_band_schedules_recovery_workflow()
     {
         SynchronizationContext.SetSynchronizationContext(null);
 
@@ -280,15 +280,18 @@ public sealed class AgentLifecycleServiceTests
         await service.StartAsync(cts.Token);
         await Task.Delay(150);
 
-        await github.Received(1).MoveItemAsync(
-            "item-1",
+        // Lifecycle no longer calls MoveItemAsync directly — the workflow's DoneActivity owns
+        // the state transition. Instead, a workflow instance is scheduled with the recovery flag.
+        await github.DidNotReceive().MoveItemAsync(
+            Arg.Any<string>(),
             ProjectState.InReview,
             ProjectState.Done,
             Arg.Any<CancellationToken>());
 
-        // No workflow should be scheduled for already-merged items
-        await daprWorkflowClient.DidNotReceive().ScheduleNewWorkflowAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<object>());
+        await daprWorkflowClient.Received(1).ScheduleNewWorkflowAsync(
+            nameof(DeveloperTaskWorkflow),
+            AgentLifecycleService.WorkflowInstanceId("item-1"),
+            Arg.Is<object>(o => CheckRecoveryInput(o, expectedPrNumber: 7)));
 
         cts.Cancel();
     }
@@ -373,7 +376,7 @@ public sealed class AgentLifecycleServiceTests
     }
 
     [Fact]
-    public async Task Workflow_schedule_failure_posts_crash_comment_and_releases_item()
+    public async Task Workflow_schedule_failure_logs_and_skips_without_moving_item()
     {
         SynchronizationContext.SetSynchronizationContext(null);
 
@@ -402,15 +405,11 @@ public sealed class AgentLifecycleServiceTests
         timeProvider.Advance(TimeSpan.FromSeconds(11));
         await Task.Delay(200);
 
-        // Comment should contain "Agent crashed"
-        await github.Received(1).AddItemCommentAsync(
-            readyItem.ContentNodeId,
-            Arg.Is<string>(s => s.Contains("Agent crashed")),
-            Arg.Any<CancellationToken>());
-
-        // Item should be moved back to Ready
-        await github.Received(1).MoveItemAsync(
-            readyItem.ProjectItemId,
+        // Step-15: lifecycle no longer owns state transitions. On dispatch failure it
+        // logs and continues. The item stays in Ready (no Acquire ran) so any rollback
+        // would be a no-op. State ownership lives in DoneActivity.
+        await github.DidNotReceive().MoveItemAsync(
+            Arg.Any<string>(),
             ProjectState.InProgress,
             ProjectState.Ready,
             Arg.Any<CancellationToken>());
@@ -567,6 +566,80 @@ public sealed class AgentLifecycleServiceTests
     {
         AgentLifecycleService.WorkflowInstanceId("PVTI_abc123")
             .Should().Be("github-project-item-PVTI_abc123");
+    }
+
+    // ── Retry-policy binding (Step-15 P2-D part 3/3) ──────────────────────────
+
+    [Fact]
+    public async Task Dispatched_TaskInput_carries_AgentOptions_retry_settings()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var daprWorkflowClient = Substitute.For<IDaprWorkflowClient>();
+        var timeProvider = new FakeTimeProvider();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<ProjectItem>());
+
+        var readyItem = MakeItem("item-binding", ProjectState.Ready);
+        var callCount = 0;
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                callCount++;
+                return callCount == 1 ? readyItem : (ProjectItem?)null;
+            });
+
+        // Use non-default values so this test can't pass by accident on AgentOptions defaults.
+        var customOptions = new AgentOptions
+        {
+            PollIntervalSeconds = 10,
+            ReviewPollIntervalSeconds = 10,
+            MaxModelTurnsHardCap = 40,
+            MaxRetryAttempts = 7,
+            FirstRetryIntervalSeconds = 5
+        };
+
+        var service = new AgentLifecycleService(
+            NullLogger<AgentLifecycleService>.Instance,
+            OptionsFactory.Create(customOptions),
+            OptionsFactory.Create(DefaultGitHubOptions()),
+            github,
+            daprWorkflowClient,
+            stateStore,
+            timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(50);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(100);
+
+        var schedules = daprWorkflowClient.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IDaprWorkflowClient.ScheduleNewWorkflowAsync))
+            .ToList();
+        schedules.Should().NotBeEmpty(because: "the ready item should have been dispatched");
+
+        var capturedInput = schedules.Last().GetArguments()[2];
+        capturedInput.Should().BeOfType<TaskInput>();
+        var ti = (TaskInput)capturedInput!;
+        ti.MaxRetryAttempts.Should().Be(7);
+        ti.FirstRetryIntervalSeconds.Should().Be(5);
+
+        cts.Cancel();
+    }
+
+    /// <summary>
+    /// Static helper used inside NSubstitute <c>Arg.Is</c> predicates — expression trees
+    /// can't contain pattern-matching, so the check is delegated here.
+    /// </summary>
+    private static bool CheckRecoveryInput(object o, int expectedPrNumber)
+    {
+        if (o is not TaskInput ti) return false;
+        return ti.RecoveryAlreadyMerged && ti.RecoveryPullRequestNumber == expectedPrNumber;
     }
 }
 
