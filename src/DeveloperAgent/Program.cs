@@ -2,12 +2,14 @@ using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
+using DeveloperAgent.AgentMemory;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Resilience;
 using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
+using Dapr.Client;
 using Dapr.Workflow;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
@@ -207,6 +209,18 @@ public class Program
             builder.Services.AddSingleton<ITaskExecutor, TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
 
+            // ── Step-18: AgentSession persistence (P2-G part 1/3) ─────────────────
+            // DaprClient is constructed once via DaprClientBuilder (Dapr.Client 1.17.9).
+            // DaprAgentSessionStore wraps it via the IDaprStateClient seam so it stays
+            // unit-testable. AgentId = Environment.MachineName matches the
+            // DaprActorTaskStateStore registration above.
+            builder.Services.AddSingleton<DaprClient>(_ => new DaprClientBuilder().Build());
+            builder.Services.AddSingleton<IDaprStateClient, DaprClientStateAdapter>();
+            builder.Services.AddSingleton<IAgentSessionStore>(sp => new DaprAgentSessionStore(
+                sp.GetRequiredService<IDaprStateClient>(),
+                DaprAgentSessionStore.StateStoreName,
+                Environment.MachineName));
+
             // ── Dapr Actors ───────────────────────────────────────────────────────
             // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
             // runtime knows about it and the Dapr sidecar can invoke instances.
@@ -232,6 +246,10 @@ public class Program
                 opt.RegisterActivity<WaitForReviewActivity>();
                 opt.RegisterActivity<DoneActivity>();
                 opt.RegisterActivity<CompactMemoryActivity>();
+                // Step-18: AgentSession persistence activities.
+                opt.RegisterActivity<LoadAgentSessionActivity>();
+                opt.RegisterActivity<SaveAgentSessionActivity>();
+                opt.RegisterActivity<DeleteAgentSessionActivity>();
             });
 
             // ── UI ────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 using Dapr.Workflow;
 using DeveloperAgent.Agent;
+using DeveloperAgent.AgentMemory;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
@@ -24,6 +25,12 @@ public sealed class RetryPolicyTests
 
     private static void PopulateHappyPathResults(FakeWorkflowContext ctx, int prNumber = 7)
     {
+        // Step-18: AgentSession persistence activities also run on the happy path.
+        ctx.SetActivityResult(nameof(LoadAgentSessionActivity),
+            new AgentSession(Environment.MachineName, "PVTI_abc", string.Empty,
+                new DateTimeOffset(2026, 5, 28, 0, 0, 0, TimeSpan.Zero), Summary: null));
+        ctx.SetActivityResult(nameof(SaveAgentSessionActivity), (object?)null);
+        ctx.SetActivityResult(nameof(DeleteAgentSessionActivity), (object?)null);
         ctx.SetActivityResult(nameof(AcquireTaskActivity), new AcquireTaskResult("agent/branch"));
         ctx.SetActivityResult(nameof(CreateBranchActivity), new CreateBranchResult("/ws/x", "main"));
         ctx.SetActivityResult(nameof(PlanActivity),
