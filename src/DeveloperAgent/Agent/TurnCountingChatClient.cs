@@ -24,7 +24,7 @@ internal sealed class HardCapReachedException : Exception
 /// <summary>
 /// <see cref="IChatClient"/> decorator that:
 /// <list type="bullet">
-///   <item>increments <see cref="AgentSession.TurnsUsed"/> on every call to the inner chat client;</item>
+///   <item>increments <see cref="AgentRunState.TurnsUsed"/> on every call to the inner chat client;</item>
 ///   <item>throws <see cref="HardCapReachedException"/> when the turn count exceeds the configured hard cap.</item>
 /// </list>
 /// <para>
@@ -35,10 +35,10 @@ internal sealed class HardCapReachedException : Exception
 /// </summary>
 internal sealed class TurnCountingChatClient : DelegatingChatClient
 {
-    private readonly AgentSession _session;
+    private readonly AgentRunState _session;
     private readonly int _hardCap;
 
-    public TurnCountingChatClient(IChatClient inner, AgentSession session, int hardCap)
+    public TurnCountingChatClient(IChatClient inner, AgentRunState session, int hardCap)
         : base(inner)
     {
         _session = session;

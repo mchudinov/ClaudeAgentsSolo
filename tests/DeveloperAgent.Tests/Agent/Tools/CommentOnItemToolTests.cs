@@ -17,7 +17,7 @@ public sealed class CommentOnItemToolTests
     {
         _tool = new CommentOnItemTool(_github);
         var ws = new TaskWorkspace("item-1", "branch-1", Path.GetTempPath(), "main");
-        _ctx = new ToolContext(new AgentSession(), ws,
+        _ctx = new ToolContext(new AgentRunState(), ws,
             new ProjectItem("proj-item-id", "content-node-id", 42, "Title", "Body", ProjectState.InProgress));
     }
 

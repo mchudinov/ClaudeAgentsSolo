@@ -19,7 +19,7 @@ public sealed class ShellRunToolTests
     {
         _tool = new ShellRunTool(_sandbox);
         var ws = new TaskWorkspace("item-1", "branch-1", Root, "main");
-        _ctx = new ToolContext(new AgentSession(), ws,
+        _ctx = new ToolContext(new AgentRunState(), ws,
             new ProjectItem("pid", "cid", 1, "T", "B", ProjectState.InProgress));
     }
 

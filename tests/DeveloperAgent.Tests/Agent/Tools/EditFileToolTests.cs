@@ -27,7 +27,7 @@ public sealed class EditFileToolTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), "edit-file-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         var ws = new TaskWorkspace("item-1", "branch-1", _root, "main");
-        _ctx = new ToolContext(new AgentSession(), ws,
+        _ctx = new ToolContext(new AgentRunState(), ws,
             new ProjectItem("pid", "cid", 1, "T", "B", ProjectState.InProgress));
     }
 
