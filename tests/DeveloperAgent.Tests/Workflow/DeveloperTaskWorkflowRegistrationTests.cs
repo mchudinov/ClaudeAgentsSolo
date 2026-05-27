@@ -37,6 +37,9 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
     [InlineData(typeof(WaitForReviewActivity))]
     [InlineData(typeof(DoneActivity))]
     [InlineData(typeof(CompactMemoryActivity))]
+    [InlineData(typeof(LoadAgentSessionActivity))]
+    [InlineData(typeof(SaveAgentSessionActivity))]
+    [InlineData(typeof(DeleteAgentSessionActivity))]
     public void Activity_extends_WorkflowActivity_open_generic(Type activityType)
     {
         // Each activity uses its own specific typed input/output, so we check the open generic base

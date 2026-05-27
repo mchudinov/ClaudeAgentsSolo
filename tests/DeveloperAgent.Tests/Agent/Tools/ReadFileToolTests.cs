@@ -37,7 +37,7 @@ public sealed class ReadFileToolTests : IDisposable
     }
 
     private static ToolContext MakeContext(TaskWorkspace ws) =>
-        new(new AgentSession(), ws,
+        new(new AgentRunState(), ws,
             new ProjectItem("pid", "cid", 1, "Title", "Body", ProjectState.InProgress));
 
     [Fact]

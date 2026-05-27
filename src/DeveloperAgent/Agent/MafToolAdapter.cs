@@ -14,7 +14,7 @@ namespace DeveloperAgent.Agent;
 /// </para>
 /// <para>
 /// On <see cref="SandboxViolationException"/>, the exception is stashed on
-/// <see cref="AgentSession.SandboxViolation"/> and re-thrown — Microsoft Agent Framework's
+/// <see cref="AgentRunState.SandboxViolation"/> and re-thrown — Microsoft Agent Framework's
 /// <c>FunctionInvokingChatClient</c> with <c>MaximumConsecutiveErrorsPerRequest = 0</c>
 /// terminates the loop and surfaces the exception (wrapped in <see cref="AggregateException"/>)
 /// to the runner, which then unwraps and returns the <c>SandboxViolation</c> outcome.

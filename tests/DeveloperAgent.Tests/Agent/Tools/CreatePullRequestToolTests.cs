@@ -12,13 +12,13 @@ public sealed class CreatePullRequestToolTests
 {
     private readonly IGitHubProjectService _github = Substitute.For<IGitHubProjectService>();
     private readonly CreatePullRequestTool _tool;
-    private readonly AgentSession _session;
+    private readonly AgentRunState _session;
     private readonly ToolContext _ctx;
 
     public CreatePullRequestToolTests()
     {
         _tool = new CreatePullRequestTool(_github);
-        _session = new AgentSession();
+        _session = new AgentRunState();
         var ws = new TaskWorkspace("item-1", "agent/fix-bug", Path.GetTempPath(), "main");
         _ctx = new ToolContext(_session, ws,
             new ProjectItem("proj-item-id", "content-node-id", 42, "Title", "Body", ProjectState.InProgress));

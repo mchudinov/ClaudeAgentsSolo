@@ -12,8 +12,13 @@ namespace DeveloperAgent.Agent;
 /// Microsoft Agent Framework owns the chat history itself (via its internal
 /// <see cref="Microsoft.Agents.AI.AgentSession"/>), so this class no longer keeps a message list.
 /// </para>
+/// <para>
+/// NOTE: This class is the per-run ephemeral counters object. The persisted workflow-progress
+/// entity is <see cref="DeveloperAgent.AgentMemory.AgentSession"/> — different concept,
+/// different lifecycle.
+/// </para>
 /// </summary>
-public sealed class AgentSession
+public sealed class AgentRunState
 {
     /// <summary>Number of model turns (request/response cycles) consumed so far.</summary>
     public int TurnsUsed { get; set; }

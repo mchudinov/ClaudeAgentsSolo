@@ -11,6 +11,6 @@ namespace DeveloperAgent.Agent.Tools;
 /// <param name="Workspace">The prepared task workspace.</param>
 /// <param name="Item">The GitHub Project item being implemented.</param>
 public sealed record ToolContext(
-    AgentSession Session,
+    AgentRunState Session,
     TaskWorkspace Workspace,
     ProjectItem Item);

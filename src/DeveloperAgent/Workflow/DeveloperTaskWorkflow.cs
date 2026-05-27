@@ -1,5 +1,6 @@
 using Dapr.Workflow;
 using DeveloperAgent.Agent;
+using DeveloperAgent.AgentMemory;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workflow.Activities;
 
@@ -14,28 +15,27 @@ namespace DeveloperAgent.Workflow;
 /// <c>DaprWorkflowClient.ScheduleNewWorkflowAsync(nameof(DeveloperTaskWorkflow),
 /// instanceId: $"github-project-item-{input.ProjectItemId}", input: input)</c>.
 ///
-/// Activity sequence:
-/// 1. <see cref="AcquireTaskActivity"/> — Ready → InProgress, set initial state.
-/// 2. <see cref="CreateBranchActivity"/> — prepare workspace and checkout branch.
-/// 3. <see cref="PlanActivity"/> — first agent round; agent opens PR on success.
-///    On failure: call <see cref="DoneActivity"/> (failure, no PR) → release InProgress → Ready → return "Failed".
-///    If no PR: same failure path.
-/// 4. <see cref="CreatePullRequestActivity"/> — InProgress → InReview.
+/// Activity sequence (Step-18 adds Load/Save/Delete around the existing activities):
+/// 0. <see cref="LoadAgentSessionActivity"/> — load persisted progress for crash-resume.
+/// 1. <see cref="AcquireTaskActivity"/> → <see cref="SaveAgentSessionActivity"/>.
+/// 2. <see cref="CreateBranchActivity"/> → <see cref="SaveAgentSessionActivity"/>.
+/// 3. <see cref="PlanActivity"/> → <see cref="SaveAgentSessionActivity"/>.
+///    On failure: <see cref="DoneActivity"/> → save → <see cref="DeleteAgentSessionActivity"/>.
+/// 4. <see cref="CreatePullRequestActivity"/> → <see cref="SaveAgentSessionActivity"/>.
 /// 5. Review loop:
-///    a. <see cref="WaitForReviewActivity"/> — poll PR status once and raise external event.
-///       - <c>Merged</c>   if merged && approved
-///       - <c>ChangesRequested</c> if review state is ChangesRequested
-///       - (no event for Pending)
-///    b. Race <see cref="WorkflowContext.WaitForExternalEventAsync{T}(string, System.Threading.CancellationToken)"/>
-///       for <c>Merged</c> and <c>ChangesRequested</c> against a <see cref="WorkflowContext.CreateTimer(System.TimeSpan, System.Threading.CancellationToken)"/>
-///       (timer cadence drives re-polling when nothing happens).
-///    c. On <c>Merged</c> → <see cref="DoneActivity"/> (success) → return "Done".
-///    d. On <c>ChangesRequested</c> → <see cref="ModifyCodeActivity"/> → back to step 5a.
-///    e. On timer → back to step 5a (re-poll).
+///    a. <see cref="WaitForReviewActivity"/> → <see cref="SaveAgentSessionActivity"/>.
+///    b. Race external events against a cadence timer.
+///    c. On <c>Merged</c> → <see cref="DoneActivity"/> (success) → save → delete → "Done".
+///    d. On <c>ChangesRequested</c> → <see cref="ModifyCodeActivity"/> → save → re-poll.
+///    e. On timer → loop back to (a).
 ///
-/// Recovery fast-path (<c>RecoveryAlreadyMerged</c>):
-/// Scheduled by lifecycle on startup when an InReview item was merged out-of-band.
-/// Jumps straight to <see cref="DoneActivity"/> (success) without running Acquire/Branch/Plan.
+/// Recovery fast-path (<c>RecoveryAlreadyMerged</c>): Load → <see cref="DoneActivity"/> → save → delete.
+///
+/// Step-18 persistence determinism:
+/// The workflow body is replay-safe — it never calls <c>DateTimeOffset.UtcNow</c> or
+/// <c>DaprClient</c>. Each <see cref="SaveAgentSessionActivity"/> is given only
+/// <c>(ProjectItemId, CurrentStep, Summary)</c>; the activity stamps
+/// <see cref="AgentSession.LastActivityTimestampUtc"/> internally.
 /// </remarks>
 public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 {
@@ -57,7 +57,17 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
                 retryTimeout: Timeout.InfiniteTimeSpan)
         };
 
-        // ── 0. RECOVERY FAST-PATH ───────────────────────────────────────────────
+        // ── 0. LOAD AGENT SESSION ───────────────────────────────────────────────
+        // Resume any prior progress for this item, or initialise a fresh session if
+        // none exists. Step-18 carries Summary forward without consuming it; Step-20
+        // will plumb Summary into the agent kickoff.
+        // TODO Step-20: plumb session.Summary into kickoff
+        var session = await context.CallActivityAsync<AgentSession>(
+            nameof(LoadAgentSessionActivity),
+            new LoadAgentSessionActivityInput(input.ProjectItemId),
+            retryOptions);
+
+        // ── 0a. RECOVERY FAST-PATH ──────────────────────────────────────────────
         // The dispatcher detected that this item's PR was merged out-of-band before
         // restart. Skip the agent phases and let DoneActivity perform the InReview → Done
         // state transition + cleanup. No workspace was prepared in this branch.
@@ -75,6 +85,8 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
             await context.CallActivityAsync<object?>(
                 nameof(DoneActivity), recoveryDoneInput, retryOptions);
+            await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), session.Summary, retryOptions);
+            await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
             return new TaskResult("Done");
         }
 
@@ -85,6 +97,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
         var acquireResult = await context.CallActivityAsync<AcquireTaskResult>(
             nameof(AcquireTaskActivity), acquireInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(AcquireTaskActivity), session.Summary, retryOptions);
 
         // ── 2. WORKSPACE / BRANCH ───────────────────────────────────────────────
         var branchInput = new CreateBranchActivityInput(
@@ -93,6 +106,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
         var branchResult = await context.CallActivityAsync<CreateBranchResult>(
             nameof(CreateBranchActivity), branchInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(CreateBranchActivity), session.Summary, retryOptions);
 
         // ── 3. PLAN (agent round 1) ─────────────────────────────────────────────
         var planInput = new PlanActivityInput(
@@ -104,6 +118,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
         var planResult = await context.CallActivityAsync<PlanResult>(
             nameof(PlanActivity), planInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(PlanActivity), session.Summary, retryOptions);
 
         // Failure or no PR opened → release the item and terminate.
         if (planResult.Outcome != AgentRunOutcome.Completed || planResult.PullRequestNumber is null)
@@ -119,6 +134,8 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
                 ToolCallsUsed: planResult.ToolCallsUsed);
 
             await context.CallActivityAsync<object?>(nameof(DoneActivity), doneFailInput, retryOptions);
+            await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), session.Summary, retryOptions);
+            await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
             return new TaskResult("Failed");
         }
 
@@ -134,6 +151,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
         await context.CallActivityAsync<CreatePullRequestResult>(
             nameof(CreatePullRequestActivity), createPrInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(CreatePullRequestActivity), session.Summary, retryOptions);
 
         // ── 5. REVIEW LOOP ──────────────────────────────────────────────────────
         long toolCallsUsed = planResult.ToolCallsUsed;
@@ -147,12 +165,13 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             var waitInput = new WaitForReviewActivityInput(input.ProjectItemId, prNumber);
             lastReviewResult = await context.CallActivityAsync<WaitForReviewResult>(
                 nameof(WaitForReviewActivity), waitInput, retryOptions);
+            await SaveSessionAsync(context, input.ProjectItemId, nameof(WaitForReviewActivity), session.Summary, retryOptions);
 
             // Direct decision when the poll itself observed a terminal state.
             if (lastReviewResult.Merged && lastReviewResult.ReviewState == PullRequestReviewState.Approved)
             {
                 return await CompleteWithSuccessAsync(context, input, branchResult,
-                    acquireResult.BranchName, prNumber, toolCallsUsed, retryOptions);
+                    acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
             }
 
             if (lastReviewResult.ReviewState == PullRequestReviewState.ChangesRequested)
@@ -161,13 +180,14 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
                     context, input, branchResult, acquireResult.BranchName, prNumber,
                     lastReviewResult.FeedbackMarkdown ?? string.Empty,
                     lastReviewResult.PolledAtUtc, retryOptions);
+                await SaveSessionAsync(context, input.ProjectItemId, nameof(ModifyCodeActivity), session.Summary, retryOptions);
 
                 toolCallsUsed += modifyResult.ToolCallsUsed;
 
                 if (modifyResult.Outcome != AgentRunOutcome.Completed)
                 {
                     return await CompleteWithFailureAsync(context, input, branchResult,
-                        acquireResult.BranchName, prNumber, toolCallsUsed, retryOptions);
+                        acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
                 }
 
                 continue;
@@ -194,7 +214,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             if (winner == mergedEventTask)
             {
                 return await CompleteWithSuccessAsync(context, input, branchResult,
-                    acquireResult.BranchName, prNumber, toolCallsUsed, retryOptions);
+                    acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
             }
 
             if (winner == changesEventTask)
@@ -205,13 +225,14 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
                     context, input, branchResult, acquireResult.BranchName, prNumber,
                     lastReviewResult.FeedbackMarkdown ?? string.Empty,
                     lastReviewResult.PolledAtUtc, retryOptions);
+                await SaveSessionAsync(context, input.ProjectItemId, nameof(ModifyCodeActivity), session.Summary, retryOptions);
 
                 toolCallsUsed += modifyResult.ToolCallsUsed;
 
                 if (modifyResult.Outcome != AgentRunOutcome.Completed)
                 {
                     return await CompleteWithFailureAsync(context, input, branchResult,
-                        acquireResult.BranchName, prNumber, toolCallsUsed, retryOptions);
+                        acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
                 }
 
                 continue;
@@ -223,7 +244,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
     private static async Task<TaskResult> CompleteWithSuccessAsync(
         WorkflowContext context, TaskInput input, CreateBranchResult branchResult,
-        string branchName, int prNumber, long toolCallsUsed, WorkflowTaskOptions retryOptions)
+        string branchName, int prNumber, long toolCallsUsed, string? summary, WorkflowTaskOptions retryOptions)
     {
         var doneSuccessInput = new DoneActivityInput(
             ProjectItemId: input.ProjectItemId,
@@ -236,12 +257,14 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             ToolCallsUsed: toolCallsUsed);
 
         await context.CallActivityAsync<object?>(nameof(DoneActivity), doneSuccessInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
+        await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
         return new TaskResult("Done");
     }
 
     private static async Task<TaskResult> CompleteWithFailureAsync(
         WorkflowContext context, TaskInput input, CreateBranchResult branchResult,
-        string branchName, int prNumber, long toolCallsUsed, WorkflowTaskOptions retryOptions)
+        string branchName, int prNumber, long toolCallsUsed, string? summary, WorkflowTaskOptions retryOptions)
     {
         var doneFailInput = new DoneActivityInput(
             ProjectItemId: input.ProjectItemId,
@@ -254,6 +277,8 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             ToolCallsUsed: toolCallsUsed);
 
         await context.CallActivityAsync<object?>(nameof(DoneActivity), doneFailInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
+        await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
         return new TaskResult("Failed");
     }
 
@@ -278,4 +303,24 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
         return await context.CallActivityAsync<ModifyCodeResult>(
             nameof(ModifyCodeActivity), modifyInput, retryOptions);
     }
+
+    /// <summary>
+    /// Schedules a <see cref="SaveAgentSessionActivity"/>. Workflow code is deterministic —
+    /// the activity stamps <see cref="AgentSession.LastActivityTimestampUtc"/> itself.
+    /// </summary>
+    private static Task<object?> SaveSessionAsync(
+        WorkflowContext context, string projectItemId, string currentStep, string? summary,
+        WorkflowTaskOptions retryOptions) =>
+        context.CallActivityAsync<object?>(
+            nameof(SaveAgentSessionActivity),
+            new SaveAgentSessionActivityInput(projectItemId, currentStep, summary),
+            retryOptions);
+
+    /// <summary>Schedules the workflow-tail <see cref="DeleteAgentSessionActivity"/>.</summary>
+    private static Task<object?> DeleteSessionAsync(
+        WorkflowContext context, string projectItemId, WorkflowTaskOptions retryOptions) =>
+        context.CallActivityAsync<object?>(
+            nameof(DeleteAgentSessionActivity),
+            new DeleteAgentSessionActivityInput(projectItemId),
+            retryOptions);
 }

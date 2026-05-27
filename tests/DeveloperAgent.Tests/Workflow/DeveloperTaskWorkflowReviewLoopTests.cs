@@ -1,5 +1,6 @@
 using Dapr.Workflow;
 using DeveloperAgent.Agent;
+using DeveloperAgent.AgentMemory;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
@@ -30,6 +31,14 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
     /// </summary>
     private static void SetupHappyPathUntilReviewLoop(FakeWorkflowContext ctx, int prNumber = 7)
     {
+        // Step-18: AgentSession persistence runs Load at start and Save between activities.
+        // Tests don't assert on Load/Save/Delete here — see DeveloperTaskWorkflowSavesAgentSessionTests
+        // — but the canned results are needed so RunAsync doesn't trip on default(T) casts.
+        ctx.SetActivityResult(nameof(LoadAgentSessionActivity),
+            new AgentSession(Environment.MachineName, "PVTI_abc", string.Empty,
+                new DateTimeOffset(2026, 5, 28, 0, 0, 0, TimeSpan.Zero), Summary: null));
+        ctx.SetActivityResult(nameof(SaveAgentSessionActivity), (object?)null);
+        ctx.SetActivityResult(nameof(DeleteAgentSessionActivity), (object?)null);
         ctx.SetActivityResult(nameof(AcquireTaskActivity), new AcquireTaskResult("agent/branch"));
         ctx.SetActivityResult(nameof(CreateBranchActivity), new CreateBranchResult("/ws/x", "main"));
         ctx.SetActivityResult(nameof(PlanActivity),
@@ -118,6 +127,11 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
     public async Task Workflow_with_RecoveryAlreadyMerged_jumps_to_DoneActivity_success()
     {
         var ctx = new FakeWorkflowContext();
+        ctx.SetActivityResult(nameof(LoadAgentSessionActivity),
+            new AgentSession(Environment.MachineName, "PVTI_x", string.Empty,
+                new DateTimeOffset(2026, 5, 28, 0, 0, 0, TimeSpan.Zero), Summary: null));
+        ctx.SetActivityResult(nameof(SaveAgentSessionActivity), (object?)null);
+        ctx.SetActivityResult(nameof(DeleteAgentSessionActivity), (object?)null);
         ctx.SetActivityResult(nameof(DoneActivity), (object?)null);
 
         var input = new TaskInput("PVTI_x", "I_x", 99, "merged out of band", "")
@@ -133,131 +147,18 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         var result = await workflow.RunAsync(ctx, input);
 
         result.Outcome.Should().Be("Done");
-        ctx.ActivityCalls.Should().HaveCount(1);
-        var call = ctx.ActivityCalls[0];
-        call.Name.Should().Be(nameof(DoneActivity));
-        var doneInput = (DoneActivityInput)call.Input!;
+
+        // Step-18 added Load/Save/Delete around the recovery DoneActivity call.
+        var doneCall = ctx.ActivityCalls.Single(c => c.Name == nameof(DoneActivity));
+        var doneInput = (DoneActivityInput)doneCall.Input!;
         doneInput.Success.Should().BeTrue();
         doneInput.PullRequestNumber.Should().Be(12);
 
-        // No other activity (AcquireTaskActivity, PlanActivity, etc.) should have been called.
+        // No other primary activity (AcquireTaskActivity, PlanActivity, etc.) should have been called.
         ctx.ActivityCalls.Should().NotContain(c => c.Name == nameof(AcquireTaskActivity));
         ctx.ActivityCalls.Should().NotContain(c => c.Name == nameof(PlanActivity));
     }
 }
 
-/// <summary>
-/// Minimal in-process fake of <see cref="WorkflowContext"/> used to test the workflow
-/// branching deterministically without a Dapr sidecar.
-/// </summary>
-internal sealed class FakeWorkflowContext : WorkflowContext
-{
-    public List<ActivityCall> ActivityCalls { get; } = [];
-    private readonly Dictionary<string, object?> _activityResults = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Queue<object?>> _activityResultQueues = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Queue<TaskCompletionSource<object?>>> _eventQueues = new(StringComparer.Ordinal);
-    public bool AutoCompleteTimers { get; set; }
-
-    public override string Name => "DeveloperTaskWorkflow";
-    public override string InstanceId => "github-project-item-PVTI_abc";
-    public override DateTime CurrentUtcDateTime => DateTime.UtcNow;
-    public override bool IsReplaying => false;
-
-    public void SetActivityResult(string activityName, object? result) =>
-        _activityResults[activityName] = result;
-
-    public void SetReviewPollResults(params object[] results)
-    {
-        if (!_activityResultQueues.TryGetValue(nameof(WaitForReviewActivity), out var q))
-        {
-            q = new Queue<object?>();
-            _activityResultQueues[nameof(WaitForReviewActivity)] = q;
-        }
-        foreach (var r in results) q.Enqueue(r);
-    }
-
-    public void CompleteExternalEvent(string eventName, object payload)
-    {
-        if (!_eventQueues.TryGetValue(eventName, out var q))
-        {
-            q = new Queue<TaskCompletionSource<object?>>();
-            _eventQueues[eventName] = q;
-        }
-        var tcs = new TaskCompletionSource<object?>();
-        tcs.SetResult(payload);
-        q.Enqueue(tcs);
-    }
-
-    public override Task<TResult> CallActivityAsync<TResult>(string name, object? input = null, WorkflowTaskOptions? options = null)
-    {
-        ActivityCalls.Add(new ActivityCall(name, input, options));
-
-        // Prefer queued result for activities the test queued multiple results for.
-        if (_activityResultQueues.TryGetValue(name, out var q) && q.Count > 0)
-            return Task.FromResult((TResult)q.Dequeue()!);
-
-        if (_activityResults.TryGetValue(name, out var result))
-            return Task.FromResult((TResult)result!);
-
-        return Task.FromResult(default(TResult)!);
-    }
-
-    public override Task CallActivityAsync(string name, object? input = null, WorkflowTaskOptions? options = null)
-    {
-        ActivityCalls.Add(new ActivityCall(name, input, options));
-        return Task.CompletedTask;
-    }
-
-    public override Task<T> WaitForExternalEventAsync<T>(string eventName, CancellationToken cancellationToken = default)
-    {
-        if (_eventQueues.TryGetValue(eventName, out var q) && q.Count > 0)
-        {
-            var tcs = q.Dequeue();
-            // Cast the payload to the requested type. For tests using `new { }` the cast may
-            // fail at runtime — production code uses ReviewEventPayload which is a real type,
-            // so tests should use that record. For simple cases where payload is ignored we
-            // return default.
-            if (tcs.Task.IsCompletedSuccessfully && tcs.Task.Result is T typed)
-                return Task.FromResult(typed);
-            // Payload type mismatch — return default(T). Production code does not depend on payload.
-            return Task.FromResult<T>(default!);
-        }
-
-        // No event queued: never-completing task so Task.WhenAny picks the other arm.
-        return new TaskCompletionSource<T>().Task;
-    }
-
-    public override Task CreateTimer(TimeSpan delay, CancellationToken cancellationToken = default)
-    {
-        if (AutoCompleteTimers)
-            return Task.CompletedTask;
-        // Default: never completes.
-        return new TaskCompletionSource().Task;
-    }
-
-    public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken = default) =>
-        CreateTimer(fireAt - DateTime.UtcNow, cancellationToken);
-
-    public override Task<TResult> CallChildWorkflowAsync<TResult>(string workflowName, object? input = null, ChildWorkflowTaskOptions? options = null)
-        => throw new NotSupportedException();
-
-    public override Task CallChildWorkflowAsync(string workflowName, object? input = null, ChildWorkflowTaskOptions? options = null)
-        => throw new NotSupportedException();
-
-    public override void ContinueAsNew(object? newInput = null, bool preserveUnprocessedEvents = true)
-        => throw new NotSupportedException();
-
-    public override Guid NewGuid() => Guid.NewGuid();
-    public override bool IsPatched(string patchName) => false;
-    public override void SendEvent(string instanceId, string eventName, object payload) { }
-    public override void SetCustomStatus(object? customStatus) { }
-
-    public override ILogger CreateReplaySafeLogger(string categoryName)
-        => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-    public override ILogger CreateReplaySafeLogger(Type type)
-        => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-    public override ILogger CreateReplaySafeLogger<T>()
-        => Microsoft.Extensions.Logging.Abstractions.NullLogger<T>.Instance;
-
-    public sealed record ActivityCall(string Name, object? Input, WorkflowTaskOptions? Options);
-}
+// FakeWorkflowContext was promoted to its own file in Step-18 so it can be reused
+// by DeveloperTaskWorkflowSavesAgentSessionTests. See Workflow/FakeWorkflowContext.cs.

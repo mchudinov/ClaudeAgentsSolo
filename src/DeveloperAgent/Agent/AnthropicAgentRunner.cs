@@ -18,7 +18,7 @@ namespace DeveloperAgent.Agent;
 /// <remarks>
 /// <para>
 /// Registered as a singleton; each call to <see cref="RunAsync"/> is stateless — a fresh
-/// <see cref="AgentSession"/> and a fresh set of <see cref="MafToolAdapter"/> bindings are
+/// <see cref="AgentRunState"/> and a fresh set of <see cref="MafToolAdapter"/> bindings are
 /// created per call so tools close over the run's mutable <see cref="ToolContext"/>.
 /// </para>
 /// <para>
@@ -58,7 +58,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
 
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, CancellationToken ct)
     {
-        var session = new AgentSession();
+        var session = new AgentRunState();
         var context = new ToolContext(session, request.Workspace, request.Item);
 
         // Wrap every ITool as an AIFunction the agent can invoke. New per-run instances so
@@ -70,7 +70,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
 
         // Append MCP-sourced tools (GitHub MCP, Context7 MCP) when configured. These come
         // through as Microsoft.Extensions.AI.AIFunction-derived McpClientTool instances so
-        // no adapter is needed. ToolCallsUsed counts local tools only — see AgentSession.
+        // no adapter is needed. ToolCallsUsed counts local tools only — see AgentRunState.
         if (_mcpToolSource is not null)
         {
             var mcpTools = await _mcpToolSource.GetToolsAsync(ct).ConfigureAwait(false);
