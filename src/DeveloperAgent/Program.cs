@@ -70,6 +70,8 @@ public class Program
                 .Validate(o => o.PollIntervalSeconds > 0, "Agent.PollIntervalSeconds must be > 0")
                 .Validate(o => o.ReviewPollIntervalSeconds > 0, "Agent.ReviewPollIntervalSeconds must be > 0")
                 .Validate(o => o.MaxModelTurnsHardCap > 0, "Agent.MaxModelTurnsHardCap must be > 0")
+                .Validate(o => o.MaxRetryAttempts > 0, "Agent.MaxRetryAttempts must be > 0")
+                .Validate(o => o.FirstRetryIntervalSeconds > 0, "Agent.FirstRetryIntervalSeconds must be > 0")
                 .ValidateOnStart();
 
             builder.Services

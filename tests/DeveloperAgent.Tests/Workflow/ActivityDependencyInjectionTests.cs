@@ -1,3 +1,4 @@
+using Dapr.Workflow;
 using DeveloperAgent.Agent;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
@@ -38,6 +39,7 @@ public sealed class ActivityDependencyInjectionTests
         typeof(ITaskStateStore),
         typeof(AgentMetrics),
         typeof(TimeProvider),
+        typeof(IDaprWorkflowClient),
     ];
 
     [Theory]

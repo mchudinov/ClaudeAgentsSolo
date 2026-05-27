@@ -150,28 +150,19 @@ public sealed class AgentLifecycleService(
 
                     if (status.Merged)
                     {
+                        // PR merged out-of-band before restart. Schedule a workflow with the
+                        // RecoveryAlreadyMerged fast-path: DoneActivity will perform the
+                        // InReview → Done transition. State ownership lives in the workflow.
                         logger.LogInformation(
-                            "PR merged out-of-band before restart; closing out. {ItemId} PR#{PrNumber}",
+                            "PR merged out-of-band before restart; dispatching recovery workflow. {ItemId} PR#{PrNumber}",
                             item.ProjectItemId, prNumber);
 
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await github.MoveItemAsync(
-                                    item.ProjectItemId,
-                                    ProjectState.InReview,
-                                    ProjectState.Done,
-                                    stoppingToken);
-                            }
-                            catch (Exception ex)
-                            {
-                                logger.LogError(ex,
-                                    "Failed to move out-of-band merged item {ItemId} to Done. Message={Message}",
-                                    item.ProjectItemId, ex.Message);
-                            }
-                        }, stoppingToken);
-
+                        await ScheduleWorkflowAsync(
+                            item,
+                            stoppingToken,
+                            recoveryAlreadyMerged: true,
+                            recoveryPrNumber: prNumber,
+                            recoveryBranchName: actorState.BranchName ?? string.Empty);
                         continue;
                     }
 
@@ -258,8 +249,11 @@ public sealed class AgentLifecycleService(
             }
             catch (Exception ex)
             {
+                // Step-15: lifecycle is a thin dispatcher. State transitions belong to the
+                // workflow (DoneActivity owns InProgress → Ready on failure; the workflow
+                // never started here so the item is still in Ready — no rollback needed).
                 logger.LogError(ex,
-                    "Failed to schedule workflow for {ItemId}. Message={Message}",
+                    "Failed to schedule workflow for {ItemId}. Item stays in Ready; will retry on next tick. Message={Message}",
                     item.ProjectItemId, ex.Message);
 
                 try
@@ -275,26 +269,16 @@ public sealed class AgentLifecycleService(
                         "Failed to post crash comment for {ItemId}",
                         item.ProjectItemId);
                 }
-
-                try
-                {
-                    await github.MoveItemAsync(
-                        item.ProjectItemId,
-                        ProjectState.InProgress,
-                        ProjectState.Ready,
-                        stoppingToken);
-                }
-                catch (Exception moveEx)
-                {
-                    logger.LogError(moveEx,
-                        "Failed to release {ItemId} back to Ready after crash",
-                        item.ProjectItemId);
-                }
             }
         }
     }
 
-    private async Task ScheduleWorkflowAsync(GitHub.ProjectItem item, CancellationToken ct)
+    private async Task ScheduleWorkflowAsync(
+        GitHub.ProjectItem item,
+        CancellationToken ct,
+        bool recoveryAlreadyMerged = false,
+        int? recoveryPrNumber = null,
+        string recoveryBranchName = "")
     {
         var instanceId = WorkflowInstanceId(item.ProjectItemId);
         var input = new TaskInput(
@@ -302,7 +286,14 @@ public sealed class AgentLifecycleService(
             ContentNodeId: item.ContentNodeId,
             ContentNumber: item.ContentNumber,
             Title: item.Title,
-            BodyMarkdown: item.BodyMarkdown);
+            BodyMarkdown: item.BodyMarkdown)
+        {
+            MaxRetryAttempts = _options.MaxRetryAttempts,
+            FirstRetryIntervalSeconds = _options.FirstRetryIntervalSeconds,
+            RecoveryAlreadyMerged = recoveryAlreadyMerged,
+            RecoveryPullRequestNumber = recoveryPrNumber,
+            RecoveryBranchName = recoveryBranchName
+        };
 
         await daprWorkflowClient.ScheduleNewWorkflowAsync(
             name: nameof(DeveloperTaskWorkflow),
@@ -310,7 +301,7 @@ public sealed class AgentLifecycleService(
             input: input);
 
         logger.LogInformation(
-            "Workflow scheduled. instanceId={InstanceId} item={ItemId}",
-            instanceId, item.ProjectItemId);
+            "Workflow scheduled. instanceId={InstanceId} item={ItemId} recoveryAlreadyMerged={Recovery}",
+            instanceId, item.ProjectItemId, recoveryAlreadyMerged);
     }
 }

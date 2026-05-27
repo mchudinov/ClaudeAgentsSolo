@@ -60,11 +60,39 @@ public sealed class DoneActivity : WorkflowActivity<DoneActivityInput, object?>
                 "[{Activity}] Task done. item={ItemId}",
                 nameof(DoneActivity), input.ProjectItemId);
         }
+        else if (input.PullRequestNumber is null)
+        {
+            // Failure with no PR opened: the workflow could not get the work past PlanActivity.
+            // Release the item back to Ready so another run can pick it up. The transition is
+            // InProgress → Ready because AcquireTaskActivity already moved it Ready → InProgress.
+            // This used to be done by AgentLifecycleService; Step-15 moved state ownership into
+            // the workflow path so the lifecycle stays a thin dispatcher.
+            try
+            {
+                await _github.MoveItemAsync(
+                    input.ProjectItemId,
+                    ProjectState.InProgress,
+                    ProjectState.Ready,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[{Activity}] Failed to release item back to Ready. item={ItemId}",
+                    nameof(DoneActivity), input.ProjectItemId);
+            }
+
+            _logger.LogWarning(
+                "[{Activity}] Task finished with failure (no PR). Item released to Ready. item={ItemId}",
+                nameof(DoneActivity), input.ProjectItemId);
+        }
         else
         {
+            // Failure with a PR open: leave the item in InReview so the human reviewer can
+            // take over. The PR remains; no state transition.
             _logger.LogWarning(
-                "[{Activity}] Task finished with failure. item={ItemId}",
-                nameof(DoneActivity), input.ProjectItemId);
+                "[{Activity}] Task finished with failure. PR#{PrNumber} left open in InReview. item={ItemId}",
+                nameof(DoneActivity), input.PullRequestNumber, input.ProjectItemId);
         }
 
         // Release workspace if a path was set
