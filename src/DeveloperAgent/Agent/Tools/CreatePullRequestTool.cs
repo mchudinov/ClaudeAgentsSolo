@@ -1,6 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
+using DeveloperAgent.Workspace;
+using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Agent.Tools;
 
@@ -9,14 +12,27 @@ namespace DeveloperAgent.Agent.Tools;
 /// Builds the body from the four persona §9 sections and derives a title.
 /// Stores the resulting <see cref="PullRequest"/> on the session for the runner to return.
 /// </summary>
+/// <remarks>
+/// Step-21 (P2-H) adds the composite <c>MaxPRSize</c> gate: before opening the PR the tool
+/// computes <c>git diff --numstat</c> stats and, if the changed-file or changed-line count
+/// exceeds the configured cap, posts an explanatory comment to the item and returns an error
+/// without opening the PR (block PR opening + comment + halt).
+/// </remarks>
 public sealed class CreatePullRequestTool : ITool
 {
     private readonly IGitHubProjectService _github;
+    private readonly IGitClient _gitClient;
+    private readonly ScopeLimitOptions _scopeLimits;
 
-    /// <summary>Initialises the tool with the GitHub service to delegate to.</summary>
-    public CreatePullRequestTool(IGitHubProjectService github)
+    /// <summary>Initialises the tool with the GitHub service, git client, and scope limits.</summary>
+    public CreatePullRequestTool(
+        IGitHubProjectService github,
+        IGitClient gitClient,
+        IOptions<ScopeLimitOptions> scopeLimits)
     {
         _github = github;
+        _gitClient = gitClient;
+        _scopeLimits = scopeLimits.Value;
     }
 
     public string Name => "create_pull_request";
@@ -81,6 +97,43 @@ public sealed class CreatePullRequestTool : ITool
                 ? summary[..(sentenceEnd + 1)].Trim()
                 : summary.Trim();
             title = sentence.Length > 72 ? sentence[..72] : sentence;
+        }
+
+        // ── Composite MaxPRSize gate (LLD §P2-H) ──────────────────────────────
+        // Block PR opening when the changed-file OR changed-line count exceeds the cap.
+        // On breach: post an explanatory comment to the item and halt (return error).
+        DiffStats stats;
+        try
+        {
+            stats = await _gitClient.GetDiffStatsAsync(
+                context.Workspace, context.Workspace.DefaultBranch, ct);
+        }
+        catch (Exception ex)
+        {
+            return new ToolResult(true, $"Failed to compute PR size: {ex.Message}");
+        }
+
+        if (stats.ChangedFiles > _scopeLimits.MaxPRChangedFiles ||
+            stats.ChangedLines > _scopeLimits.MaxPRChangedLines)
+        {
+            var comment =
+                $"Pull request blocked: change set exceeds the configured MaxPRSize scope limit. " +
+                $"Changed files: {stats.ChangedFiles} (cap {_scopeLimits.MaxPRChangedFiles}); " +
+                $"changed lines: {stats.ChangedLines} (cap {_scopeLimits.MaxPRChangedLines}). " +
+                $"Split the work into smaller pull requests.";
+
+            try
+            {
+                await _github.AddItemCommentAsync(context.Item.ContentNodeId, comment, ct);
+            }
+            catch (Exception ex)
+            {
+                return new ToolResult(true,
+                    $"PR blocked by MaxPRSize ({stats.ChangedFiles} files, {stats.ChangedLines} lines); " +
+                    $"also failed to post explanatory comment: {ex.Message}");
+            }
+
+            return new ToolResult(true, comment);
         }
 
         var request = new CreatePullRequest(

@@ -49,10 +49,19 @@ public sealed class GitClientIntegrationTests
             commandDenyPolicy,
             NullLogger<CommandSandbox>.Instance);
 
+        // Generous scope limits so the integration push path is not blocked by the
+        // Step-21 (P2-H) changed-file / changed-line gate.
+        var scopeOpts = Options.Create(new ScopeLimitOptions
+        {
+            MaxChangedFiles = 10_000,
+            MaxChangedLines = 1_000_000,
+        });
+
         return new GitClient(
             sandbox,
             workspaceOpts,
             githubOpts,
+            scopeOpts,
             secrets,
             NullLogger<GitClient>.Instance);
     }

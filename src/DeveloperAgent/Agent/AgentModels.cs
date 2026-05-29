@@ -8,8 +8,14 @@ public enum AgentRunOutcome
     /// <summary>Model stopped producing tool calls — task is done.</summary>
     Completed,
 
-    /// <summary><see cref="Configuration.AgentOptions.MaxModelTurnsHardCap"/> hit; loop aborted.</summary>
+    /// <summary><see cref="Configuration.ScopeLimitOptions.MaxModelTurns"/> hit; loop aborted.</summary>
     HardCapReached,
+
+    /// <summary><see cref="Configuration.ScopeLimitOptions.MaxToolCalls"/> hit; loop aborted.</summary>
+    ToolCallLimitReached,
+
+    /// <summary><see cref="Configuration.ScopeLimitOptions.MaxExecutionTimeSeconds"/> wall-clock budget hit; run aborted.</summary>
+    TimeLimitExceeded,
 
     /// <summary>A tool raised <see cref="Workspace.SandboxViolationException"/>; task is dead.</summary>
     SandboxViolation,

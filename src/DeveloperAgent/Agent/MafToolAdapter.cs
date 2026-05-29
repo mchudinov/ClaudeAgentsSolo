@@ -24,12 +24,14 @@ internal sealed class MafToolAdapter : AIFunction
 {
     private readonly ITool _tool;
     private readonly ToolContext _context;
+    private readonly int _maxToolCalls;
     private readonly JsonElement _schemaElement;
 
-    public MafToolAdapter(ITool tool, ToolContext context)
+    public MafToolAdapter(ITool tool, ToolContext context, int maxToolCalls)
     {
         _tool = tool;
         _context = context;
+        _maxToolCalls = maxToolCalls;
         // Convert the tool's JsonNode schema into a JsonElement so it can be served
         // via AIFunctionDeclaration.JsonSchema to Microsoft Agent Framework.
         _schemaElement = JsonSerializer.SerializeToElement(tool.InputSchema);
@@ -49,6 +51,11 @@ internal sealed class MafToolAdapter : AIFunction
         AIFunctionArguments arguments,
         CancellationToken cancellationToken)
     {
+        // Scope-limit gate (LLD §P2-H): halt before invoking a tool that would push the
+        // run past MaxToolCalls. The runner catches this and returns ToolCallLimitReached.
+        if (_context.Session.ToolCallsUsed >= _maxToolCalls)
+            throw new ToolCallLimitReachedException(_context.Session.ToolCallsUsed, _maxToolCalls);
+
         // The function call comes in as named arguments; rebuild the JsonNode the tool expects.
         var inputObject = new JsonObject();
         foreach (var kvp in arguments)

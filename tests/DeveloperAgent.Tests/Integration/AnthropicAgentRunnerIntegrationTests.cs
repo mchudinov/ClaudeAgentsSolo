@@ -100,8 +100,11 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         {
             Model             = "claude-haiku-4-5",   // cheapest model for integration test
             Effort            = "low",                // minimal thinking budget
-            MaxModelTurnsHardCap = 6,                 // bound cost at ~6 model turns
             PersonaPath       = "personas/developer.md",
+        });
+        var scopeLimits = Options.Create(new ScopeLimitOptions
+        {
+            MaxModelTurns = 6,                        // bound cost at ~6 model turns
         });
 
         // Provide the minimal tool set: write + create PR.
@@ -119,11 +122,17 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         var sandbox = new CommandSandbox(
             processRunner, workspaceOpts, denyPolicy, commandDenyPolicy, NullLogger<CommandSandbox>.Instance);
 
+        // Stub git client: the create_pull_request MaxPRSize gate calls GetDiffStatsAsync;
+        // return a small diff so the gate never blocks in this integration scenario.
+        var gitClient = Substitute.For<IGitClient>();
+        gitClient.GetDiffStatsAsync(Arg.Any<TaskWorkspace>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(new DiffStats(1, 10));
+
         ITool[] tools =
         [
             new WriteFileTool(denyPolicy),
             new ReadFileTool(denyPolicy),
-            new CreatePullRequestTool(fakeGitHub),
+            new CreatePullRequestTool(fakeGitHub, gitClient, scopeLimits),
             new CommentOnItemTool(fakeGitHub),
         ];
 
@@ -131,6 +140,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
             chatClientFactory,
             MakePersonaLoader(),
             agentOpts,
+            scopeLimits,
             tools,
             NullLogger<AnthropicAgentRunner>.Instance);
     }

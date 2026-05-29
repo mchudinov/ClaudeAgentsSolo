@@ -33,6 +33,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
     private readonly IAgentChatClientFactory _chatClientFactory;
     private readonly PersonaLoader _personaLoader;
     private readonly AgentOptions _options;
+    private readonly ScopeLimitOptions _scopeLimits;
     private readonly IReadOnlyList<ITool> _tools;
     private readonly IMcpToolSource? _mcpToolSource;
     private readonly ILogger<AnthropicAgentRunner> _logger;
@@ -42,6 +43,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         IAgentChatClientFactory chatClientFactory,
         PersonaLoader personaLoader,
         IOptions<AgentOptions> options,
+        IOptions<ScopeLimitOptions> scopeLimits,
         IEnumerable<ITool> tools,
         ILogger<AnthropicAgentRunner> logger,
         IMcpToolSource? mcpToolSource = null,
@@ -50,6 +52,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         _chatClientFactory = chatClientFactory;
         _personaLoader = personaLoader;
         _options = options.Value;
+        _scopeLimits = scopeLimits.Value;
         _tools = [..tools];
         _mcpToolSource = mcpToolSource;
         _logger = logger;
@@ -61,11 +64,19 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         var session = new AgentRunState();
         var context = new ToolContext(session, request.Workspace, request.Item);
 
+        // Scope-limit gate (LLD §P2-H): give this run a wall-clock budget. The linked
+        // token does NOT flip the caller's `ct`, so a timeout falls through to a dedicated
+        // catch keyed on `timeoutCts` below — NOT the caller-cancellation catch.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_scopeLimits.MaxExecutionTimeSeconds));
+        var runCt = timeoutCts.Token;
+
         // Wrap every ITool as an AIFunction the agent can invoke. New per-run instances so
         // the adapter closes over THIS session — important for ToolCallsUsed counting and
         // CreatePullRequestTool storing the resulting PullRequest on session.CreatedPullRequest.
+        // MaxToolCalls is enforced inside the adapter against session.ToolCallsUsed.
         IList<AITool> mafTools = _tools
-            .Select(t => (AITool)new MafToolAdapter(t, context))
+            .Select(t => (AITool)new MafToolAdapter(t, context, _scopeLimits.MaxToolCalls))
             .ToList();
 
         // Append MCP-sourced tools (GitHub MCP, Context7 MCP) when configured. These come
@@ -73,7 +84,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         // no adapter is needed. ToolCallsUsed counts local tools only — see AgentRunState.
         if (_mcpToolSource is not null)
         {
-            var mcpTools = await _mcpToolSource.GetToolsAsync(ct).ConfigureAwait(false);
+            var mcpTools = await _mcpToolSource.GetToolsAsync(runCt).ConfigureAwait(false);
             foreach (var mcpTool in mcpTools)
                 mafTools.Add(mcpTool);
         }
@@ -81,7 +92,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         // Build the chat client; wrap it with the turn-counting decorator BEFORE handing
         // it to ChatClientAgent (which itself wraps with FunctionInvokingChatClient).
         IChatClient innerChatClient = _chatClientFactory.Create(_options.Model);
-        IChatClient countingClient = new TurnCountingChatClient(innerChatClient, session, _options.MaxModelTurnsHardCap);
+        IChatClient countingClient = new TurnCountingChatClient(innerChatClient, session, _scopeLimits.MaxModelTurns);
 
         var agentOptions = new ChatClientAgentOptions
         {
@@ -111,7 +122,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
             fic.MaximumConsecutiveErrorsPerRequest = 0;
             // Keep MAF's own iteration cap aligned with our hard cap as a defence in depth;
             // the authoritative check is in TurnCountingChatClient.
-            fic.MaximumIterationsPerRequest = Math.Max(1, _options.MaxModelTurnsHardCap);
+            fic.MaximumIterationsPerRequest = Math.Max(1, _scopeLimits.MaxModelTurns);
             fic.IncludeDetailedErrors = true;
         }
 
@@ -121,8 +132,8 @@ public sealed class AnthropicAgentRunner : IAgentRunner
 
         try
         {
-            var agentSession = await agent.CreateSessionAsync(ct).ConfigureAwait(false);
-            var response = await agent.RunAsync(kickoff, agentSession, options: null, ct).ConfigureAwait(false);
+            var agentSession = await agent.CreateSessionAsync(runCt).ConfigureAwait(false);
+            var response = await agent.RunAsync(kickoff, agentSession, options: null, runCt).ConfigureAwait(false);
 
             session.FinalAssistantText = response.Text;
 
@@ -136,6 +147,20 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 session.TurnsUsed,
                 session.ToolCallsUsed,
                 null);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // The per-run wall-clock budget elapsed. This is distinct from caller cancellation:
+            // a CancelAfter on the linked CTS does NOT flip `ct`, so we must key on timeoutCts.
+            _logger.LogWarning(
+                "Agent run exceeded MaxExecutionTime={Seconds}s after {Turns} turns",
+                _scopeLimits.MaxExecutionTimeSeconds, session.TurnsUsed);
+            return new AgentRunResult(
+                AgentRunOutcome.TimeLimitExceeded,
+                session.CreatedPullRequest,
+                session.TurnsUsed,
+                session.ToolCallsUsed,
+                $"Execution time limit of {_scopeLimits.MaxExecutionTimeSeconds}s exceeded.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -156,6 +181,16 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 session.TurnsUsed,
                 session.ToolCallsUsed,
                 $"Hard cap of {hardCap.Cap} model turns reached.");
+        }
+        catch (Exception ex) when (UnwrapToolCallLimit(ex) is { } toolLimit)
+        {
+            _logger.LogWarning("Tool-call limit reached: {ToolCalls} calls", session.ToolCallsUsed);
+            return new AgentRunResult(
+                AgentRunOutcome.ToolCallLimitReached,
+                session.CreatedPullRequest,
+                session.TurnsUsed,
+                session.ToolCallsUsed,
+                $"Tool-call limit of {toolLimit.Cap} reached.");
         }
         catch (Exception) when (session.SandboxViolation is not null)
         {
@@ -198,6 +233,27 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         }
         if (ex.InnerException is { } inner2)
             return UnwrapHardCap(inner2);
+        return null;
+    }
+
+    /// <summary>
+    /// Walks an exception tree (including <see cref="AggregateException.InnerExceptions"/>)
+    /// looking for a <see cref="ToolCallLimitReachedException"/>.
+    /// </summary>
+    private static ToolCallLimitReachedException? UnwrapToolCallLimit(Exception ex)
+    {
+        if (ex is ToolCallLimitReachedException tc)
+            return tc;
+        if (ex is AggregateException agg)
+        {
+            foreach (var inner in agg.Flatten().InnerExceptions)
+            {
+                if (inner is ToolCallLimitReachedException t)
+                    return t;
+            }
+        }
+        if (ex.InnerException is { } inner2)
+            return UnwrapToolCallLimit(inner2);
         return null;
     }
 

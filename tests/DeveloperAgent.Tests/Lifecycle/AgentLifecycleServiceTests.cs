@@ -22,9 +22,10 @@ public sealed class AgentLifecycleServiceTests
     private static readonly AgentOptions Options = new()
     {
         PollIntervalSeconds = 10,
-        ReviewPollIntervalSeconds = 10,
-        MaxModelTurnsHardCap = 40
+        ReviewPollIntervalSeconds = 10
     };
+
+    private static readonly ScopeLimitOptions ScopeLimits = new();
 
     private static ProjectItem MakeItem(string id = "item-1", ProjectState state = ProjectState.InProgress) =>
         new(
@@ -52,6 +53,7 @@ public sealed class AgentLifecycleServiceTests
         new(logger ?? NullLogger<AgentLifecycleService>.Instance,
             OptionsFactory.Create(Options),
             OptionsFactory.Create(gitHubOptions ?? DefaultGitHubOptions()),
+            OptionsFactory.Create(ScopeLimits),
             github,
             daprWorkflowClient,
             stateStore,
@@ -84,6 +86,7 @@ public sealed class AgentLifecycleServiceTests
             logger,
             OptionsFactory.Create(Options),
             OptionsFactory.Create(DefaultGitHubOptions()),
+            OptionsFactory.Create(ScopeLimits),
             github,
             daprWorkflowClient,
             stateStore,
@@ -592,20 +595,23 @@ public sealed class AgentLifecycleServiceTests
                 return callCount == 1 ? readyItem : (ProjectItem?)null;
             });
 
-        // Use non-default values so this test can't pass by accident on AgentOptions defaults.
+        // Use non-default values so this test can't pass by accident on defaults.
+        // Step-21 (P2-H): TaskInput.MaxRetryAttempts (the workflow activity-retry cap) is
+        // sourced from the scope-limit policy's MaxRetryCount. FirstRetryIntervalSeconds
+        // (the back-off cadence) still comes from AgentOptions.
         var customOptions = new AgentOptions
         {
             PollIntervalSeconds = 10,
             ReviewPollIntervalSeconds = 10,
-            MaxModelTurnsHardCap = 40,
-            MaxRetryAttempts = 7,
             FirstRetryIntervalSeconds = 5
         };
+        var customScopeLimits = new ScopeLimitOptions { MaxRetryCount = 7 };
 
         var service = new AgentLifecycleService(
             NullLogger<AgentLifecycleService>.Instance,
             OptionsFactory.Create(customOptions),
             OptionsFactory.Create(DefaultGitHubOptions()),
+            OptionsFactory.Create(customScopeLimits),
             github,
             daprWorkflowClient,
             stateStore,

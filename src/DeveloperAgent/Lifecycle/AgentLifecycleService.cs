@@ -20,6 +20,7 @@ public sealed class AgentLifecycleService(
     ILogger<AgentLifecycleService> logger,
     IOptions<AgentOptions> agentOptions,
     IOptions<GitHubOptions> gitHubOptions,
+    IOptions<ScopeLimitOptions> scopeLimits,
     IGitHubProjectService github,
     IDaprWorkflowClient daprWorkflowClient,
     ITaskStateStore taskStateStore,
@@ -27,6 +28,7 @@ public sealed class AgentLifecycleService(
 {
     private readonly AgentOptions _options = agentOptions.Value;
     private readonly GitHubOptions _gitHubOptions = gitHubOptions.Value;
+    private readonly ScopeLimitOptions _scopeLimits = scopeLimits.Value;
 
     /// <summary>Workflow instance ID convention used by the lifecycle service.</summary>
     public static string WorkflowInstanceId(string projectItemId) =>
@@ -288,7 +290,10 @@ public sealed class AgentLifecycleService(
             Title: item.Title,
             BodyMarkdown: item.BodyMarkdown)
         {
-            MaxRetryAttempts = _options.MaxRetryAttempts,
+            // Step-21 (P2-H): MaxRetryCount is the scope-limit policy's retry cap and is
+            // the single source feeding the workflow's activity-level retry policy
+            // (TaskInput.MaxRetryAttempts → WorkflowRetryPolicy.maxNumberOfAttempts).
+            MaxRetryAttempts = _scopeLimits.MaxRetryCount,
             FirstRetryIntervalSeconds = _options.FirstRetryIntervalSeconds,
             RecoveryAlreadyMerged = recoveryAlreadyMerged,
             RecoveryPullRequestNumber = recoveryPrNumber,
