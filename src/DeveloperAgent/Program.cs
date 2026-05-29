@@ -251,6 +251,14 @@ public class Program
                 DaprAgentSessionStore.StateStoreName,
                 Environment.MachineName));
 
+            // ── Step-25: task-memory store (P2-J) ─────────────────────────────────
+            // CompactMemoryActivity persists the post-Done summary under
+            // task-memory:{projectItemId} via this store; DaprAgentMemoryContextProvider
+            // (Step-20) reads the same namespace on a future run.
+            builder.Services.AddSingleton<IAgentMemoryStore>(sp => new DaprAgentMemoryStore(
+                sp.GetRequiredService<IDaprStateClient>(),
+                DaprAgentMemoryStore.StateStoreName));
+
             // ── Dapr Actors ───────────────────────────────────────────────────────
             // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
             // runtime knows about it and the Dapr sidecar can invoke instances.
