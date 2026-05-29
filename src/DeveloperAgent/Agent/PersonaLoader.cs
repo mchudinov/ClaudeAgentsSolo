@@ -24,8 +24,21 @@ public sealed class PersonaLoader
     /// Thrown when the persona file is missing or empty — the agent cannot operate without a persona.
     /// </exception>
     public PersonaLoader(IOptions<AgentOptions> options, IHostEnvironment env)
+        : this(options.Value.PersonaPath, env)
     {
-        var configured = options.Value.PersonaPath;
+    }
+
+    /// <summary>
+    /// Loads and caches the persona at <paramref name="personaPath"/> (relative to
+    /// <c>ContentRootPath</c> or rooted). Shared by the developer-persona ctor above and by
+    /// the reviewer persona loader so the file-resolution logic exists exactly once.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the persona file is missing or empty.
+    /// </exception>
+    public PersonaLoader(string personaPath, IHostEnvironment env)
+    {
+        var configured = personaPath;
         string? resolved = null;
 
         if (Path.IsPathRooted(configured))

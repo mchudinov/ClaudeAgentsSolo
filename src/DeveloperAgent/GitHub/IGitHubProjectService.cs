@@ -38,6 +38,20 @@ public interface IGitHubProjectService
     Task<PullRequestStatus> GetPullRequestStatusAsync(int pullRequestNumber, CancellationToken ct);
 
     /// <summary>
+    /// Fetches everything the reviewer agent needs to review a pull request in one round-trip:
+    /// the PR body, the changed-file/line counts, and the concatenated unified diff.
+    /// </summary>
+    Task<PullRequestReviewContext> GetPullRequestForReviewAsync(int pullRequestNumber, CancellationToken ct);
+
+    /// <summary>
+    /// Submits a review on the pull request with the given <paramref name="verdict"/> and
+    /// markdown <paramref name="body"/>. <see cref="ReviewVerdict.Approve"/> maps to GitHub's
+    /// APPROVE event; <see cref="ReviewVerdict.RequestChanges"/> maps to REQUEST_CHANGES.
+    /// Never merges.
+    /// </summary>
+    Task SubmitReviewAsync(int pullRequestNumber, ReviewVerdict verdict, string body, CancellationToken ct);
+
+    /// <summary>
     /// Fetches review-thread comments and issue comments newer than <paramref name="sinceUtc"/>
     /// on the pull request, concatenated as a single markdown blob.
     /// Returns an empty string if no comments are newer than the cursor.

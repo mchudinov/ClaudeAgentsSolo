@@ -280,6 +280,36 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             HeadSha: pr.HeadSha);
     }
 
+    public async Task<PullRequestReviewContext> GetPullRequestForReviewAsync(int pullRequestNumber, CancellationToken ct)
+    {
+        var bodyTask = _rest.GetPullRequestBodyAsync(_options.Owner, _options.Repository.Name, pullRequestNumber, ct);
+        var filesTask = _rest.GetPullRequestFilesAsync(_options.Owner, _options.Repository.Name, pullRequestNumber, ct);
+        await Task.WhenAll(bodyTask, filesTask).ConfigureAwait(false);
+
+        var body = bodyTask.Result;
+        var files = filesTask.Result;
+
+        var changedFiles = files.Count;
+        var changedLines = files.Sum(f => f.Additions + f.Deletions);
+
+        // Concatenate per-file patches into a single unified diff blob, each prefixed with a
+        // git-style `diff --git` header so the model can attribute hunks to files. Files with
+        // no patch (e.g. binary or pure renames) contribute only the header.
+        var diff = string.Join("\n", files.Select(f =>
+            $"diff --git a/{f.FileName} b/{f.FileName}\n{f.Patch ?? "(no textual diff)"}"));
+
+        return new PullRequestReviewContext(pullRequestNumber, body, changedFiles, changedLines, diff);
+    }
+
+    public async Task SubmitReviewAsync(int pullRequestNumber, ReviewVerdict verdict, string body, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Submitting {Verdict} review on PR #{Number}", verdict, pullRequestNumber);
+        await _rest.SubmitReviewAsync(
+            _options.Owner, _options.Repository.Name, pullRequestNumber, verdict, body, ct)
+            .ConfigureAwait(false);
+    }
+
     public async Task<string> GetReviewFeedbackSinceAsync(
         int pullRequestNumber, DateTimeOffset sinceUtc, CancellationToken ct)
     {
