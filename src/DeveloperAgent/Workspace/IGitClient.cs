@@ -51,4 +51,12 @@ public interface IGitClient
     /// Returns <c>git diff {base}...HEAD</c> output for use in PR-body generation.
     /// </summary>
     Task<string> DiffAsync(TaskWorkspace ws, string @base, CancellationToken ct);
+
+    /// <summary>
+    /// Returns the aggregate change statistics of <c>{base}...HEAD</c> via
+    /// <c>git diff --numstat</c>. Used by the scope-limit policy to enforce
+    /// changed-file / changed-line caps. Binary files (numstat <c>-</c>) contribute
+    /// zero lines but still count as a changed file.
+    /// </summary>
+    Task<DiffStats> GetDiffStatsAsync(TaskWorkspace ws, string @base, CancellationToken ct);
 }

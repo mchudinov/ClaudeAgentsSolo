@@ -5,7 +5,7 @@ namespace DeveloperAgent.Agent;
 
 /// <summary>
 /// Thrown by <see cref="TurnCountingChatClient"/> when the model is asked to take
-/// more turns than <see cref="Configuration.AgentOptions.MaxModelTurnsHardCap"/>.
+/// more turns than <see cref="Configuration.ScopeLimitOptions.MaxModelTurns"/>.
 /// The runner catches this and returns <see cref="AgentRunOutcome.HardCapReached"/>.
 /// </summary>
 internal sealed class HardCapReachedException : Exception

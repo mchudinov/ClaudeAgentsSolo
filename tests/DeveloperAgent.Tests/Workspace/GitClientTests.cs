@@ -27,7 +27,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
     /// Creates a fresh <see cref="GitClient"/> backed by a real <see cref="CommandSandbox"/>
     /// that uses the default workspace root = the fixture's temp dir.
     /// </summary>
-    private GitClient BuildClient(string workspaceRoot)
+    private GitClient BuildClient(string workspaceRoot, ScopeLimitOptions? scopeLimits = null)
     {
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
@@ -35,6 +35,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
             AllowedCommands = new WorkspaceOptions().AllowedCommands,
         });
         var githubOpts = Options.Create(new GitHubOptions());
+        var scopeOpts = Options.Create(scopeLimits ?? new ScopeLimitOptions());
         var secrets = new SecretsBundle("", "");
         var processRunner = new DefaultProcessRunner();
         var sandboxOpts = Options.Create(new SandboxOptions
@@ -56,6 +57,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
             sandbox,
             workspaceOpts,
             githubOpts,
+            scopeOpts,
             secrets,
             Substitute.For<ILogger<GitClient>>());
     }
@@ -281,6 +283,102 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         var diff = await client.DiffAsync(ws, "main", CancellationToken.None);
 
         diff.Should().Contain("difftest.txt");
+    }
+
+    // ── GetDiffStatsAsync ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDiffStatsAsync_counts_files_and_lines()
+    {
+        var (_, repoRoot, ws) = CreateFreshClone();
+        var client = BuildClient(_fixture.TempDir);
+
+        await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "a.txt"), "l1\nl2\nl3\n");
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "b.txt"), "x\n");
+        await client.AddAsync(ws, ["a.txt", "b.txt"], CancellationToken.None);
+        await client.CommitAsync(ws, "Add two files", "", CancellationToken.None);
+
+        var stats = await client.GetDiffStatsAsync(ws, "main", CancellationToken.None);
+
+        stats.ChangedFiles.Should().Be(2);
+        stats.ChangedLines.Should().Be(4); // 3 added in a.txt + 1 added in b.txt
+    }
+
+    [Fact]
+    public async Task GetDiffStatsAsync_returns_zero_when_no_changes()
+    {
+        var (_, _, ws) = CreateFreshClone();
+        var client = BuildClient(_fixture.TempDir);
+
+        await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
+
+        var stats = await client.GetDiffStatsAsync(ws, "main", CancellationToken.None);
+
+        stats.ChangedFiles.Should().Be(0);
+        stats.ChangedLines.Should().Be(0);
+    }
+
+    // ── PushAsync — scope-limit guard ─────────────────────────────────────────
+
+    [Fact]
+    public async Task PushAsync_refuses_when_changed_files_exceed_limit()
+    {
+        var (_, repoRoot, ws) = CreateFreshClone();
+        var client = BuildClient(_fixture.TempDir, new ScopeLimitOptions { MaxChangedFiles = 1 });
+
+        await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "a.txt"), "a\n");
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "b.txt"), "b\n");
+        await client.AddAsync(ws, ["a.txt", "b.txt"], CancellationToken.None);
+        await client.CommitAsync(ws, "Two files", "", CancellationToken.None);
+
+        var act = async () => await client.PushAsync(ws, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<ScopeLimitExceededException>()).Which;
+        ex.Limit.Should().Be(ScopeLimit.MaxChangedFiles);
+        // Upstream must NOT have received the branch.
+        var branches = RunGitOutput(_fixture.UpstreamPath, "branch");
+        branches.Should().NotContain(ws.BranchName);
+    }
+
+    [Fact]
+    public async Task PushAsync_refuses_when_changed_lines_exceed_limit()
+    {
+        var (_, repoRoot, ws) = CreateFreshClone();
+        var client = BuildClient(_fixture.TempDir,
+            new ScopeLimitOptions { MaxChangedFiles = 100, MaxChangedLines = 2 });
+
+        await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "a.txt"), "l1\nl2\nl3\nl4\n");
+        await client.AddAsync(ws, ["a.txt"], CancellationToken.None);
+        await client.CommitAsync(ws, "Four lines", "", CancellationToken.None);
+
+        var act = async () => await client.PushAsync(ws, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<ScopeLimitExceededException>()).Which;
+        ex.Limit.Should().Be(ScopeLimit.MaxChangedLines);
+    }
+
+    [Fact]
+    public async Task PushAsync_succeeds_when_within_limits()
+    {
+        var (_, repoRoot, ws0) = CreateFreshClone();
+        // Unique branch so this test's push does not collide with the other pushing test
+        // that shares the same TempRepoFixture upstream.
+        var ws = ws0 with { BranchName = "agent/within-limits-" + Guid.NewGuid().ToString("N")[..8] };
+        var client = BuildClient(_fixture.TempDir,
+            new ScopeLimitOptions { MaxChangedFiles = 10, MaxChangedLines = 100 });
+
+        await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(repoRoot, "newfile.txt"), "hello\n");
+        await client.AddAsync(ws, ["newfile.txt"], CancellationToken.None);
+        await client.CommitAsync(ws, "Add newfile", "", CancellationToken.None);
+
+        await client.PushAsync(ws, CancellationToken.None);
+
+        var branches = RunGitOutput(_fixture.UpstreamPath, "branch");
+        branches.Should().Contain(ws.BranchName);
     }
 }
 

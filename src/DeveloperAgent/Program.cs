@@ -71,9 +71,23 @@ public class Program
                 .Bind(builder.Configuration.GetSection("Agent"))
                 .Validate(o => o.PollIntervalSeconds > 0, "Agent.PollIntervalSeconds must be > 0")
                 .Validate(o => o.ReviewPollIntervalSeconds > 0, "Agent.ReviewPollIntervalSeconds must be > 0")
-                .Validate(o => o.MaxModelTurnsHardCap > 0, "Agent.MaxModelTurnsHardCap must be > 0")
-                .Validate(o => o.MaxRetryAttempts > 0, "Agent.MaxRetryAttempts must be > 0")
                 .Validate(o => o.FirstRetryIntervalSeconds > 0, "Agent.FirstRetryIntervalSeconds must be > 0")
+                .ValidateOnStart();
+
+            // ── Scope limits (Step-21, P2-H) ─────────────────────────────────────
+            // Config-driven task scope-limit policy. Each cap must be positive; the
+            // policy layer treats every limit as a hard halt-and-surface gate.
+            builder.Services
+                .AddOptions<ScopeLimitOptions>()
+                .Bind(builder.Configuration.GetSection("ScopeLimits"))
+                .Validate(o => o.MaxChangedFiles > 0, "ScopeLimits.MaxChangedFiles must be > 0")
+                .Validate(o => o.MaxChangedLines > 0, "ScopeLimits.MaxChangedLines must be > 0")
+                .Validate(o => o.MaxExecutionTimeSeconds > 0, "ScopeLimits.MaxExecutionTimeSeconds must be > 0")
+                .Validate(o => o.MaxModelTurns > 0, "ScopeLimits.MaxModelTurns must be > 0")
+                .Validate(o => o.MaxToolCalls > 0, "ScopeLimits.MaxToolCalls must be > 0")
+                .Validate(o => o.MaxRetryCount > 0, "ScopeLimits.MaxRetryCount must be > 0")
+                .Validate(o => o.MaxPRChangedFiles > 0, "ScopeLimits.MaxPRChangedFiles must be > 0")
+                .Validate(o => o.MaxPRChangedLines > 0, "ScopeLimits.MaxPRChangedLines must be > 0")
                 .ValidateOnStart();
 
             builder.Services

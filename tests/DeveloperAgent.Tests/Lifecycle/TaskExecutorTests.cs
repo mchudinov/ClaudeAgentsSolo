@@ -22,8 +22,7 @@ public sealed class TaskExecutorTests
     private static readonly AgentOptions Options = new()
     {
         PollIntervalSeconds = 10,
-        ReviewPollIntervalSeconds = 10,
-        MaxModelTurnsHardCap = 40
+        ReviewPollIntervalSeconds = 10
     };
 
     private static ProjectItem MakeItem(string id = "item-1") =>
@@ -552,8 +551,7 @@ public sealed class TaskExecutorMetricsTests
     private static readonly AgentOptions Options = new()
     {
         PollIntervalSeconds = 10,
-        ReviewPollIntervalSeconds = 10,
-        MaxModelTurnsHardCap = 40
+        ReviewPollIntervalSeconds = 10
     };
 
     private static ProjectItem MakeItem(string id = "item-1") =>

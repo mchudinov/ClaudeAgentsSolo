@@ -16,8 +16,9 @@ public sealed record TaskInput(string ProjectItemId, string ContentNodeId, int C
     /// <summary>
     /// Maximum attempts (including the first) the workflow engine will make per activity.
     /// Populated by <see cref="DeveloperAgent.Lifecycle.AgentLifecycleService"/> from
-    /// <see cref="DeveloperAgent.Configuration.AgentOptions.MaxRetryAttempts"/>.
-    /// Default of 3 keeps existing tests/round-trips deterministic when omitted.
+    /// <see cref="DeveloperAgent.Configuration.ScopeLimitOptions.MaxRetryCount"/> (the
+    /// scope-limit policy's retry cap). Default of 3 keeps existing tests/round-trips
+    /// deterministic when omitted.
     /// </summary>
     public int MaxRetryAttempts { get; init; } = 3;
 

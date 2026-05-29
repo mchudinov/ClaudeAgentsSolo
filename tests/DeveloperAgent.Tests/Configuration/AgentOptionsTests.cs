@@ -16,7 +16,6 @@ public sealed class AgentOptionsTests
         options.Effort.Should().Be("xhigh");
         options.PollIntervalSeconds.Should().Be(60);
         options.ReviewPollIntervalSeconds.Should().Be(60);
-        options.MaxModelTurnsHardCap.Should().Be(40);
     }
 
     [Fact]
@@ -37,7 +36,6 @@ public sealed class AgentOptionsTests
                 ["Agent:Effort"] = "high",
                 ["Agent:PollIntervalSeconds"] = "30",
                 ["Agent:ReviewPollIntervalSeconds"] = "45",
-                ["Agent:MaxModelTurnsHardCap"] = "20",
             })
             .Build();
 
@@ -49,7 +47,53 @@ public sealed class AgentOptionsTests
         options.Effort.Should().Be("high");
         options.PollIntervalSeconds.Should().Be(30);
         options.ReviewPollIntervalSeconds.Should().Be(45);
-        options.MaxModelTurnsHardCap.Should().Be(20);
+    }
+}
+
+public sealed class ScopeLimitOptionsTests
+{
+    [Fact]
+    public void Defaults_match_documented_schema()
+    {
+        var options = new ScopeLimitOptions();
+        options.MaxChangedFiles.Should().Be(50);
+        options.MaxChangedLines.Should().Be(2_000);
+        options.MaxExecutionTimeSeconds.Should().Be(1_800);
+        options.MaxModelTurns.Should().Be(40);
+        options.MaxToolCalls.Should().Be(200);
+        options.MaxRetryCount.Should().Be(3);
+        options.MaxPRChangedFiles.Should().Be(50);
+        options.MaxPRChangedLines.Should().Be(2_000);
+    }
+
+    [Fact]
+    public void Binding_from_configuration_overrides_defaults()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ScopeLimits:MaxChangedFiles"] = "10",
+                ["ScopeLimits:MaxChangedLines"] = "300",
+                ["ScopeLimits:MaxExecutionTimeSeconds"] = "600",
+                ["ScopeLimits:MaxModelTurns"] = "25",
+                ["ScopeLimits:MaxToolCalls"] = "75",
+                ["ScopeLimits:MaxRetryCount"] = "5",
+                ["ScopeLimits:MaxPRChangedFiles"] = "12",
+                ["ScopeLimits:MaxPRChangedLines"] = "400",
+            })
+            .Build();
+
+        var options = new ScopeLimitOptions();
+        config.GetSection("ScopeLimits").Bind(options);
+
+        options.MaxChangedFiles.Should().Be(10);
+        options.MaxChangedLines.Should().Be(300);
+        options.MaxExecutionTimeSeconds.Should().Be(600);
+        options.MaxModelTurns.Should().Be(25);
+        options.MaxToolCalls.Should().Be(75);
+        options.MaxRetryCount.Should().Be(5);
+        options.MaxPRChangedFiles.Should().Be(12);
+        options.MaxPRChangedLines.Should().Be(400);
     }
 }
 

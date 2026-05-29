@@ -26,8 +26,19 @@ public sealed class AnthropicAgentRunnerTests
             Workspace: new TaskWorkspace("item-1", "agent/fix-bug", Path.GetTempPath(), "main"),
             PriorReviewFeedback: feedback);
 
-    private static IOptions<AgentOptions> MakeOptions(int hardCap = 40) =>
-        Options.Create(new AgentOptions { MaxModelTurnsHardCap = hardCap });
+    private static IOptions<AgentOptions> MakeOptions() =>
+        Options.Create(new AgentOptions());
+
+    private static IOptions<ScopeLimitOptions> MakeScopeLimits(
+        int maxModelTurns = 40,
+        int maxToolCalls = 200,
+        int maxExecutionTimeSeconds = 1_800) =>
+        Options.Create(new ScopeLimitOptions
+        {
+            MaxModelTurns = maxModelTurns,
+            MaxToolCalls = maxToolCalls,
+            MaxExecutionTimeSeconds = maxExecutionTimeSeconds,
+        });
 
     private static PersonaLoader MakePersonaLoader()
     {
@@ -51,11 +62,14 @@ public sealed class AnthropicAgentRunnerTests
         IChatClient chatClient,
         IEnumerable<ITool>? tools = null,
         int hardCap = 40,
+        int maxToolCalls = 200,
+        int maxExecutionTimeSeconds = 1_800,
         IMcpToolSource? mcpToolSource = null) =>
         new(
             new StubChatClientFactory(chatClient),
             MakePersonaLoader(),
-            MakeOptions(hardCap),
+            MakeOptions(),
+            MakeScopeLimits(hardCap, maxToolCalls, maxExecutionTimeSeconds),
             tools ?? [],
             NullLogger<AnthropicAgentRunner>.Instance,
             mcpToolSource);
@@ -159,7 +173,7 @@ public sealed class AnthropicAgentRunnerTests
     // ── Test: hard cap ───────────────────────────────────────────────────────
 
     [Fact]
-    public async Task HardCapReached_after_MaxModelTurnsHardCap_plus_one_turns()
+    public async Task HardCapReached_after_MaxModelTurns_plus_one_turns()
     {
         // Arrange: client always returns tool_use; cap = 3 → after 4th request to the inner
         // client we exceed cap and the runner returns HardCapReached.
@@ -178,6 +192,62 @@ public sealed class AnthropicAgentRunnerTests
         result.Outcome.Should().Be(AgentRunOutcome.HardCapReached);
         result.TurnsUsed.Should().Be(4); // turns 1,2,3 pass; turn 4 triggers the cap
         result.TerminationReason.Should().Contain("Hard cap of 3");
+    }
+
+    // ── Test: tool-call limit ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ToolCallLimitReached_after_MaxToolCalls_tool_invocations()
+    {
+        // Arrange: client always returns a tool_use for a local tool; MaxToolCalls = 2.
+        // The 3rd invocation is blocked by the adapter before the tool runs.
+        var tool = new FakeTool { Name = "read_file" };
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(FunctionCallResponse("read_file")));
+
+        // Large turn cap so the tool-call cap is the binding limit.
+        var runner = BuildRunner(chatClient, [tool], hardCap: 100, maxToolCalls: 2);
+
+        // Act
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        // Assert
+        result.Outcome.Should().Be(AgentRunOutcome.ToolCallLimitReached);
+        result.ToolCallsUsed.Should().Be(2); // 2 calls succeed; the 3rd is blocked
+        result.TerminationReason.Should().Contain("Tool-call limit of 2");
+        tool.Calls.Should().Be(2);
+    }
+
+    // ── Test: execution-time limit ────────────────────────────────────────────
+
+    [Fact]
+    public async Task TimeLimitExceeded_when_run_exceeds_MaxExecutionTime()
+    {
+        // Arrange: the inner chat client blocks honouring its own cancellation token until
+        // the run's timeout CTS fires. MaxExecutionTime = 0s → fires effectively immediately.
+        var tool = new FakeTool { Name = "read_file" };
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                var token = ci.Arg<CancellationToken>();
+                // Wait until the run-scoped timeout cancels this token, then propagate OCE.
+                await Task.Delay(Timeout.Infinite, token);
+                return TextResponse();
+            });
+
+        // ct passed to RunAsync is NOT cancelled — only the internal timeout CTS fires.
+        var runner = BuildRunner(chatClient, [tool], maxExecutionTimeSeconds: 0);
+
+        // Act
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        // Assert: distinct outcome, NOT Cancelled and NOT ApiError.
+        result.Outcome.Should().Be(AgentRunOutcome.TimeLimitExceeded);
+        result.TerminationReason.Should().Contain("Execution time limit");
     }
 
     // ── Test: sandbox violation ──────────────────────────────────────────────
