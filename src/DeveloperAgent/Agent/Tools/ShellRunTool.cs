@@ -79,7 +79,11 @@ public sealed class ShellRunTool : ITool
         CommandResult result;
         try
         {
-            result = await _sandbox.RunAsync(command, resolvedCwd, TimeSpan.FromSeconds(timeoutSeconds), ct);
+            // Request container isolation (isolate: true). The sandbox runs the command
+            // inside an isolated child container when ContainerRuntime.Enabled is set;
+            // otherwise it falls back to direct host execution. Allowlist / deny / cwd
+            // validation runs identically either way.
+            result = await _sandbox.RunAsync(command, resolvedCwd, TimeSpan.FromSeconds(timeoutSeconds), ct, isolate: true);
         }
         catch (SandboxViolationException)
         {
