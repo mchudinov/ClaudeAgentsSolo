@@ -1061,4 +1061,71 @@ public sealed class GitHubProjectServiceTests
 
         result.Should().BeNull("items with unrecognized option IDs must be excluded, not surfaced as Ready");
     }
+
+    // ── §Step-28: GetPullRequestForReviewAsync / SubmitReviewAsync ────────────
+
+    [Fact]
+    public async Task GetPullRequestForReviewAsync_aggregates_body_files_and_diff()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        rest.GetPullRequestBodyAsync("test-org", "test-repo", 42, Arg.Any<CancellationToken>())
+            .Returns("## Summary\nbody text");
+        rest.GetPullRequestFilesAsync("test-org", "test-repo", 42, Arg.Any<CancellationToken>())
+            .Returns(new List<RestPullRequestFile>
+            {
+                new("src/A.cs", Additions: 10, Deletions: 2, Patch: "@@ -1 +1 @@\n+a"),
+                new("src/B.cs", Additions: 5,  Deletions: 3, Patch: "@@ -1 +1 @@\n+b"),
+            });
+
+        var svc = CreateService(graphQL, rest);
+
+        var ctx = await svc.GetPullRequestForReviewAsync(42, CancellationToken.None);
+
+        ctx.Number.Should().Be(42);
+        ctx.Body.Should().Be("## Summary\nbody text");
+        ctx.ChangedFiles.Should().Be(2);
+        ctx.ChangedLines.Should().Be(20); // (10+2) + (5+3)
+        ctx.UnifiedDiff.Should().Contain("diff --git a/src/A.cs b/src/A.cs");
+        ctx.UnifiedDiff.Should().Contain("diff --git a/src/B.cs b/src/B.cs");
+        ctx.UnifiedDiff.Should().Contain("+a");
+    }
+
+    [Fact]
+    public async Task GetPullRequestForReviewAsync_handles_file_without_patch()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        rest.GetPullRequestBodyAsync("test-org", "test-repo", 1, Arg.Any<CancellationToken>())
+            .Returns(string.Empty);
+        rest.GetPullRequestFilesAsync("test-org", "test-repo", 1, Arg.Any<CancellationToken>())
+            .Returns(new List<RestPullRequestFile> { new("logo.png", 0, 0, Patch: null) });
+
+        var svc = CreateService(graphQL, rest);
+
+        var ctx = await svc.GetPullRequestForReviewAsync(1, CancellationToken.None);
+
+        ctx.ChangedFiles.Should().Be(1);
+        ctx.ChangedLines.Should().Be(0);
+        ctx.UnifiedDiff.Should().Contain("(no textual diff)");
+    }
+
+    [Fact]
+    public async Task SubmitReviewAsync_forwards_verdict_and_body_to_transport()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+        rest.SubmitReviewAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(),
+                Arg.Any<ReviewVerdict>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var svc = CreateService(graphQL, rest);
+
+        await svc.SubmitReviewAsync(99, ReviewVerdict.Approve, "LGTM", CancellationToken.None);
+
+        await rest.Received(1).SubmitReviewAsync(
+            "test-org", "test-repo", 99, ReviewVerdict.Approve, "LGTM", Arg.Any<CancellationToken>());
+    }
 }

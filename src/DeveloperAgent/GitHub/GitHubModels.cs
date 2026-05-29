@@ -6,6 +6,28 @@ public enum ProjectState { Ready, InProgress, InReview, Done }
 /// <summary>Aggregated review verdict for an open pull request.</summary>
 public enum PullRequestReviewState { Pending, ChangesRequested, Approved }
 
+/// <summary>
+/// The verdict the reviewer agent submits on a pull request. Two values only — the task
+/// posts Approve or RequestChanges; GitHub collapses any "reject" notion into the same
+/// REQUEST_CHANGES event, so no third value is modelled here.
+/// </summary>
+public enum ReviewVerdict { Approve, RequestChanges }
+
+/// <summary>
+/// Everything the reviewer agent needs to review a pull request, fetched in one round-trip.
+/// </summary>
+/// <param name="Number">PR number in the repository.</param>
+/// <param name="Body">The PR body markdown (used for the four-section check).</param>
+/// <param name="ChangedFiles">Count of files changed in the PR.</param>
+/// <param name="ChangedLines">Total changed lines (additions + deletions) across all files.</param>
+/// <param name="UnifiedDiff">Concatenated per-file unified-diff patches (the change content).</param>
+public sealed record PullRequestReviewContext(
+    int Number,
+    string Body,
+    int ChangedFiles,
+    int ChangedLines,
+    string UnifiedDiff);
+
 /// <summary>A GitHub Project v2 item that contains an Issue or Pull Request.</summary>
 /// <param name="ProjectItemId">GraphQL node ID of the <c>ProjectV2Item</c>.</param>
 /// <param name="ContentNodeId">Issue or PR node ID — used for comments.</param>

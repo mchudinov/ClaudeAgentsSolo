@@ -19,6 +19,12 @@ internal sealed record RestPullRequest(
     string HtmlUrl,
     bool Merged);
 
+internal sealed record RestPullRequestFile(
+    string FileName,
+    int Additions,
+    int Deletions,
+    string? Patch);
+
 internal sealed record RestPullRequestReview(
     long Id,
     string ReviewerLogin,
@@ -70,6 +76,15 @@ internal interface IGraphQLTransport
 internal interface IRestTransport
 {
     Task<RestPullRequest> GetPullRequestAsync(string owner, string repo, int number, CancellationToken ct);
+
+    /// <summary>Returns the PR body markdown (empty string when GitHub returns no body).</summary>
+    Task<string> GetPullRequestBodyAsync(string owner, string repo, int number, CancellationToken ct);
+
+    /// <summary>Returns the per-file change list (additions/deletions/patch) for the PR.</summary>
+    Task<IReadOnlyList<RestPullRequestFile>> GetPullRequestFilesAsync(string owner, string repo, int number, CancellationToken ct);
+
+    /// <summary>Submits a review on the PR with the given event and body. Never merges.</summary>
+    Task SubmitReviewAsync(string owner, string repo, int number, ReviewVerdict verdict, string body, CancellationToken ct);
 
     Task<IReadOnlyList<RestPullRequestReview>> GetPullRequestReviewsAsync(string owner, string repo, int number, CancellationToken ct);
 
@@ -255,6 +270,32 @@ internal sealed class OctokitRestTransport : IRestTransport
     {
         var pr = await GetClient().PullRequest.Get(owner, repo, number).ConfigureAwait(false);
         return new RestPullRequest(pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged);
+    }
+
+    public async Task<string> GetPullRequestBodyAsync(string owner, string repo, int number, CancellationToken ct)
+    {
+        var pr = await GetClient().PullRequest.Get(owner, repo, number).ConfigureAwait(false);
+        return pr.Body ?? string.Empty;
+    }
+
+    public async Task<IReadOnlyList<RestPullRequestFile>> GetPullRequestFilesAsync(string owner, string repo, int number, CancellationToken ct)
+    {
+        var files = await GetClient().PullRequest.Files(owner, repo, number).ConfigureAwait(false);
+        return files
+            .Select(f => new RestPullRequestFile(f.FileName, f.Additions, f.Deletions, f.Patch))
+            .ToList();
+    }
+
+    public async Task SubmitReviewAsync(string owner, string repo, int number, ReviewVerdict verdict, string body, CancellationToken ct)
+    {
+        var review = new PullRequestReviewCreate
+        {
+            Body = body,
+            Event = verdict == ReviewVerdict.Approve
+                ? PullRequestReviewEvent.Approve
+                : PullRequestReviewEvent.RequestChanges,
+        };
+        await GetClient().PullRequest.Review.Create(owner, repo, number, review).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RestPullRequestReview>> GetPullRequestReviewsAsync(string owner, string repo, int number, CancellationToken ct)

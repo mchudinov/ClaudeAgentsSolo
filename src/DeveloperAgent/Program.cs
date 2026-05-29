@@ -98,6 +98,14 @@ public class Program
                 .AddOptions<GitHubOptions>()
                 .Bind(builder.Configuration.GetSection("GitHub"));
 
+            // Reviewer agent options (Step-28, P2-M).
+            builder.Services
+                .AddOptions<ReviewerOptions>()
+                .Bind(builder.Configuration.GetSection("Reviewer"))
+                .Validate(o => o.MaxDiffFiles > 0, "Reviewer.MaxDiffFiles must be > 0")
+                .Validate(o => o.MaxDiffLines > 0, "Reviewer.MaxDiffLines must be > 0")
+                .ValidateOnStart();
+
             builder.Services
                 .AddOptions<WorkspaceOptions>()
                 .Bind(builder.Configuration.GetSection("Workspace"))
@@ -217,6 +225,14 @@ public class Program
             builder.Services.AddSingleton<ITool, CommentOnItemTool>();
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
             builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
+
+            // ── Reviewer agent (Step-28, P2-M) ────────────────────────────────────
+            // ReviewerPersonaLoader throws at construction if personas/reviewer.md is
+            // missing or empty. ReviewerAgent reuses IAgentChatClientFactory so the same
+            // resilient Anthropic transport applies; deterministic body/diff-size checks
+            // run before any model call.
+            builder.Services.AddSingleton<DeveloperAgent.Agent.ReviewerPersonaLoader>();
+            builder.Services.AddSingleton<DeveloperAgent.Agent.Review.IReviewerAgent, DeveloperAgent.Agent.Review.ReviewerAgent>();
 
             // ── Observability ─────────────────────────────────────────────────────
             // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
