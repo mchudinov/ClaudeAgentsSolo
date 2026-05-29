@@ -151,4 +151,22 @@ public sealed class CompactMemoryActivityTests
         // The activity (not the deterministic workflow body) stamps the timestamp.
         summary.Should().Contain("2026-05-30");
     }
+
+    [Fact]
+    public async Task Store_failure_is_swallowed_so_workflow_cleanup_can_proceed()
+    {
+        // Compaction is a non-critical memory write that runs AFTER the Done transition and
+        // BEFORE DeleteSessionActivity in DeveloperTaskWorkflow.CompleteWithSuccessAsync. If a
+        // store failure propagated, the workflow would fault after the item is already Done and
+        // DeleteSessionActivity would never run — orphaning the agent session. So the activity
+        // is best-effort: it must NOT throw when the store fails.
+        var store = Substitute.For<IAgentMemoryStore>();
+        store.SaveTaskMemoriesAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromException(new InvalidOperationException("dapr state store unavailable")));
+        var activity = BuildActivity(store);
+
+        var act = async () => await activity.RunAsync(MakeContext(), SampleInput());
+
+        await act.Should().NotThrowAsync();
+    }
 }

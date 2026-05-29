@@ -80,13 +80,28 @@ public sealed class CompactMemoryActivity : WorkflowActivity<CompactMemoryActivi
 
         var summary = Compose(input, _clock.GetUtcNow());
 
-        // Overwrite semantics → idempotent across retries/replays for the same inputs+clock.
-        await _store.SaveTaskMemoriesAsync(
-            input.ProjectItemId, new[] { summary }, CancellationToken.None).ConfigureAwait(false);
+        // Best-effort: compaction is a non-critical memory write that runs after the Done
+        // transition and before DeleteSessionActivity (see DeveloperTaskWorkflow
+        // .CompleteWithSuccessAsync). A store failure must NOT fault the workflow here, or the
+        // already-completed item's session would be orphaned (DeleteSessionActivity skipped).
+        // We swallow and log rather than rethrow so the workflow proceeds to cleanup.
+        try
+        {
+            // Overwrite semantics → idempotent across retries/replays for the same inputs+clock.
+            await _store.SaveTaskMemoriesAsync(
+                input.ProjectItemId, new[] { summary }, CancellationToken.None).ConfigureAwait(false);
 
-        _logger.LogInformation(
-            "[{Activity}] Persisted task-completion summary. item={ItemId} pr={Pr}",
-            nameof(CompactMemoryActivity), input.ProjectItemId, input.PullRequestNumber);
+            _logger.LogInformation(
+                "[{Activity}] Persisted task-completion summary. item={ItemId} pr={Pr}",
+                nameof(CompactMemoryActivity), input.ProjectItemId, input.PullRequestNumber);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[{Activity}] Failed to persist task-completion summary; continuing so workflow "
+                + "cleanup is not stranded. item={ItemId}",
+                nameof(CompactMemoryActivity), input.ProjectItemId);
+        }
 
         return null;
     }
