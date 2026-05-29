@@ -109,6 +109,14 @@ public class Program
                 .AddOptions<SandboxOptions>()
                 .Bind(builder.Configuration.GetSection("Sandbox"));
 
+            // ── Container isolation (Step-24, P2-I part 3/3) ──────────────────────
+            // Per-shell_run isolation config. Disabled by default so the agent boots
+            // without a container runtime; CommandSandbox routes shell_run through
+            // IContainerRuntime only when Enabled is set.
+            builder.Services
+                .AddOptions<ContainerRuntimeOptions>()
+                .Bind(builder.Configuration.GetSection("ContainerRuntime"));
+
             // ── MCP servers (Step-17, P2-F) ───────────────────────────────────────
             // Both servers are Enabled=false by default — the agent boots cleanly without
             // npx/node available. McpToolSource skips disabled servers silently and a
@@ -173,12 +181,20 @@ public class Program
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
             builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
             builder.Services.AddSingleton<ICommandDenyPolicy, CommandDenyPolicy>();
+            // DockerContainerRuntime has an internal ctor (depends on internal IProcessRunner),
+            // so register it via factory lambda — same reason as CommandSandbox below.
+            builder.Services.AddSingleton<IContainerRuntime>(sp => new DockerContainerRuntime(
+                sp.GetRequiredService<IProcessRunner>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContainerRuntimeOptions>>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DockerContainerRuntime>>()));
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
                 sp.GetRequiredService<IPathDenyPolicy>(),
                 sp.GetRequiredService<ICommandDenyPolicy>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>(),
+                sp.GetRequiredService<IContainerRuntime>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContainerRuntimeOptions>>()));
             // HostAllowlistHandler is registered as a transient so the three named
             // HttpClients above (Anthropic, GitHubRest, GitHubGraphQL) can compose it
             // as their outer message handler; .AddHttpMessageHandler<T>() resolves a
