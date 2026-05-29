@@ -6,6 +6,19 @@ namespace DeveloperAgent.GitHub;
 public static class PullRequestBodyBuilder
 {
     /// <summary>
+    /// The canonical four section headers (markdown <c>##</c> form) the developer persona (§9)
+    /// requires in every PR body, in their required order. Consumed by the reviewer agent's
+    /// missing-section check so the section knowledge is defined exactly once.
+    /// </summary>
+    public static readonly IReadOnlyList<string> RequiredSectionHeaders =
+    [
+        "## Summary",
+        "## User-visible behavior",
+        "## Tests/validation run",
+        "## Notes/assumptions",
+    ];
+
+    /// <summary>
     /// Builds the canonical four-section PR body.
     /// </summary>
     /// <param name="summary">What the PR changes and why. Must not be empty.</param>
@@ -27,10 +40,11 @@ public static class PullRequestBodyBuilder
             string.IsNullOrWhiteSpace(value) ? "None" : value;
 
         // Explicit \n so the body is byte-identical regardless of the source file's line endings.
+        // Headers come from RequiredSectionHeaders so the canonical set lives in one place.
         return
-            $"## Summary\n{summary}\n\n" +
-            $"## User-visible behavior\n{OrNone(userVisibleBehavior)}\n\n" +
-            $"## Tests/validation run\n{OrNone(testsValidationRun)}\n\n" +
-            $"## Notes/assumptions\n{OrNone(notesAssumptions)}\n";
+            $"{RequiredSectionHeaders[0]}\n{summary}\n\n" +
+            $"{RequiredSectionHeaders[1]}\n{OrNone(userVisibleBehavior)}\n\n" +
+            $"{RequiredSectionHeaders[2]}\n{OrNone(testsValidationRun)}\n\n" +
+            $"{RequiredSectionHeaders[3]}\n{OrNone(notesAssumptions)}\n";
     }
 }

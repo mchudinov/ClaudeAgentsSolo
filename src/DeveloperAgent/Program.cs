@@ -105,6 +105,14 @@ public class Program
                 .AddOptions<GitHubOptions>()
                 .Bind(builder.Configuration.GetSection("GitHub"));
 
+            // Reviewer agent options (Step-28, P2-M).
+            builder.Services
+                .AddOptions<ReviewerOptions>()
+                .Bind(builder.Configuration.GetSection("Reviewer"))
+                .Validate(o => o.MaxDiffFiles > 0, "Reviewer.MaxDiffFiles must be > 0")
+                .Validate(o => o.MaxDiffLines > 0, "Reviewer.MaxDiffLines must be > 0")
+                .ValidateOnStart();
+
             builder.Services
                 .AddOptions<WorkspaceOptions>()
                 .Bind(builder.Configuration.GetSection("Workspace"))
@@ -115,6 +123,14 @@ public class Program
             builder.Services
                 .AddOptions<SandboxOptions>()
                 .Bind(builder.Configuration.GetSection("Sandbox"));
+
+            // ── Container isolation (Step-24, P2-I part 3/3) ──────────────────────
+            // Per-shell_run isolation config. Disabled by default so the agent boots
+            // without a container runtime; CommandSandbox routes shell_run through
+            // IContainerRuntime only when Enabled is set.
+            builder.Services
+                .AddOptions<ContainerRuntimeOptions>()
+                .Bind(builder.Configuration.GetSection("ContainerRuntime"));
 
             // ── MCP servers (Step-17, P2-F) ───────────────────────────────────────
             // Both servers are Enabled=false by default — the agent boots cleanly without
@@ -180,12 +196,20 @@ public class Program
             builder.Services.AddSingleton<IProcessRunner>(_ => new DefaultProcessRunner());
             builder.Services.AddSingleton<IPathDenyPolicy, PathDenyPolicy>();
             builder.Services.AddSingleton<ICommandDenyPolicy, CommandDenyPolicy>();
+            // DockerContainerRuntime has an internal ctor (depends on internal IProcessRunner),
+            // so register it via factory lambda — same reason as CommandSandbox below.
+            builder.Services.AddSingleton<IContainerRuntime>(sp => new DockerContainerRuntime(
+                sp.GetRequiredService<IProcessRunner>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContainerRuntimeOptions>>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DockerContainerRuntime>>()));
             builder.Services.AddSingleton<ICommandSandbox>(sp => new CommandSandbox(
                 sp.GetRequiredService<IProcessRunner>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WorkspaceOptions>>(),
                 sp.GetRequiredService<IPathDenyPolicy>(),
                 sp.GetRequiredService<ICommandDenyPolicy>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>()));
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CommandSandbox>>(),
+                sp.GetRequiredService<IContainerRuntime>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContainerRuntimeOptions>>()));
             // HostAllowlistHandler is registered as a transient so the three named
             // HttpClients above (Anthropic, GitHubRest, GitHubGraphQL) can compose it
             // as their outer message handler; .AddHttpMessageHandler<T>() resolves a
@@ -208,6 +232,14 @@ public class Program
             builder.Services.AddSingleton<ITool, CommentOnItemTool>();
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
             builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
+
+            // ── Reviewer agent (Step-28, P2-M) ────────────────────────────────────
+            // ReviewerPersonaLoader throws at construction if personas/reviewer.md is
+            // missing or empty. ReviewerAgent reuses IAgentChatClientFactory so the same
+            // resilient Anthropic transport applies; deterministic body/diff-size checks
+            // run before any model call.
+            builder.Services.AddSingleton<DeveloperAgent.Agent.ReviewerPersonaLoader>();
+            builder.Services.AddSingleton<DeveloperAgent.Agent.Review.IReviewerAgent, DeveloperAgent.Agent.Review.ReviewerAgent>();
 
             // ── Observability ─────────────────────────────────────────────────────
             // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe
@@ -241,6 +273,14 @@ public class Program
                 sp.GetRequiredService<IDaprStateClient>(),
                 DaprAgentSessionStore.StateStoreName,
                 Environment.MachineName));
+
+            // ── Step-25: task-memory store (P2-J) ─────────────────────────────────
+            // CompactMemoryActivity persists the post-Done summary under
+            // task-memory:{projectItemId} via this store; DaprAgentMemoryContextProvider
+            // (Step-20) reads the same namespace on a future run.
+            builder.Services.AddSingleton<IAgentMemoryStore>(sp => new DaprAgentMemoryStore(
+                sp.GetRequiredService<IDaprStateClient>(),
+                DaprAgentMemoryStore.StateStoreName));
 
             // ── Dapr Actors ───────────────────────────────────────────────────────
             // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the

@@ -258,6 +258,30 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
         await context.CallActivityAsync<object?>(nameof(DoneActivity), doneSuccessInput, retryOptions);
         await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
+
+        // ── Step-25 (P2-J): compact task memory after the Done transition ──────────
+        // Persist a task-completion summary under task-memory:{projectItemId} so a future
+        // run on the same item reads it back via DaprAgentMemoryContextProvider (Step-20).
+        // Only plain deterministic data is passed; CompactMemoryActivity stamps the
+        // completion timestamp and writes state itself (workflow body stays replay-safe).
+        // The recovery fast-path deliberately skips this — see RunAsync's RecoveryAlreadyMerged
+        // branch: a PR merged out-of-band did no agent work this run, so there is nothing to
+        // summarize.
+        var compactInput = new CompactMemoryActivityInput(
+            ProjectItemId: input.ProjectItemId,
+            Title: input.Title,
+            ContentNumber: input.ContentNumber,
+            BranchName: branchName,
+            PullRequestNumber: prNumber,
+            ToolCallsUsed: toolCallsUsed,
+            Decisions: null,
+            ChangedFiles: Array.Empty<string>(),
+            TestResults: null,
+            UnresolvedRisks: null);
+
+        await context.CallActivityAsync<object?>(
+            nameof(CompactMemoryActivity), compactInput, retryOptions);
+
         await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
         return new TaskResult("Done");
     }

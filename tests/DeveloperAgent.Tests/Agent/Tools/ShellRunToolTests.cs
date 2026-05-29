@@ -26,7 +26,7 @@ public sealed class ShellRunToolTests
     private void SetupSandbox(int exitCode = 0, string stdout = "", string stderr = "", bool timedOut = false)
     {
         _sandbox.RunAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
             .Returns(new CommandResult(exitCode, stdout, stderr, TimeSpan.FromMilliseconds(50), timedOut));
     }
 
@@ -61,7 +61,7 @@ public sealed class ShellRunToolTests
     public async Task Sandbox_violation_rethrows_exception()
     {
         _sandbox.RunAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
             .Returns<CommandResult>(_ => throw new SandboxViolationException("rm -rf not allowed"));
 
         var act = async () => await _tool.InvokeAsync(
@@ -74,7 +74,7 @@ public sealed class ShellRunToolTests
     public async Task Non_sandbox_exception_returns_error_result()
     {
         _sandbox.RunAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
             .Returns<CommandResult>(_ => throw new IOException("disk full"));
 
         var result = await _tool.InvokeAsync(
@@ -100,12 +100,27 @@ public sealed class ShellRunToolTests
         _sandbox.RunAsync(
             Arg.Any<string>(), Arg.Any<string>(),
             Arg.Do<TimeSpan>(t => capturedTimeout = t),
-            Arg.Any<CancellationToken>())
+            Arg.Any<CancellationToken>(), Arg.Any<bool>())
             .Returns(new CommandResult(0, "", "", TimeSpan.Zero, false));
 
         await _tool.InvokeAsync(
             JsonNode.Parse("{\"command\":\"dotnet build\",\"timeout_seconds\":99999}")!, _ctx, CancellationToken.None);
 
         capturedTimeout.Should().Be(TimeSpan.FromSeconds(1200));
+    }
+
+    [Fact]
+    public async Task Requests_container_isolation()
+    {
+        bool? capturedIsolate = null;
+        _sandbox.RunAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>(),
+            Arg.Do<bool>(b => capturedIsolate = b))
+            .Returns(new CommandResult(0, "", "", TimeSpan.Zero, false));
+
+        await _tool.InvokeAsync(
+            JsonNode.Parse("{\"command\":\"dotnet build\"}")!, _ctx, CancellationToken.None);
+
+        capturedIsolate.Should().BeTrue(because: "shell_run must request container isolation");
     }
 }
