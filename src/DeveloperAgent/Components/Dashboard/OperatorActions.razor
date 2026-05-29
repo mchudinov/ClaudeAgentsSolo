@@ -1,0 +1,45 @@
+@using DeveloperAgent.Dashboard
+@using DeveloperAgent.Lifecycle
+@inject IOperatorCommandService Commands
+@inject ITaskStateStore TaskStateStore
+
+<MudPaper Class="pa-4" Elevation="2" data-testid="operator-actions">
+    <MudText Typo="Typo.h6" GutterBottom="true">Actions</MudText>
+
+    <MudButtonGroup Variant="Variant.Filled" Color="Color.Primary">
+        <MudButton StartIcon="@Icons.Material.Filled.Pause"
+                   Disabled="@(!HasTask)"
+                   OnClick="OnPause"
+                   data-testid="action-pause">Pause</MudButton>
+        <MudButton StartIcon="@Icons.Material.Filled.PlayArrow"
+                   Disabled="@(!HasTask)"
+                   OnClick="OnResume"
+                   data-testid="action-resume">Resume</MudButton>
+        <MudButton StartIcon="@Icons.Material.Filled.Cancel"
+                   Color="Color.Error"
+                   Disabled="@(!HasTask)"
+                   OnClick="OnCancel"
+                   data-testid="action-cancel">Cancel</MudButton>
+    </MudButtonGroup>
+
+    @if (_lastResult is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3" data-testid="action-result">
+            @(_lastResult.Accepted
+                ? $"{_lastResult.Command} requested for {_lastResult.ProjectItemId}."
+                : $"{_lastResult.Command} ignored — no active task.")
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    private OperatorCommandResult? _lastResult;
+
+    private bool HasTask => TaskStateStore.Current is not null;
+
+    private async Task OnPause() => _lastResult = await Commands.PauseAsync(CancellationToken.None);
+
+    private async Task OnResume() => _lastResult = await Commands.ResumeAsync(CancellationToken.None);
+
+    private async Task OnCancel() => _lastResult = await Commands.CancelAsync(CancellationToken.None);
+}

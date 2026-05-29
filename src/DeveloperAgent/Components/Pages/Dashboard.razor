@@ -1,0 +1,27 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@using DeveloperAgent.Components.Dashboard
+
+<PageTitle>Operator dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudText Typo="Typo.h4" GutterBottom="true">Operator dashboard</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <TaskStatusPanel RepositoryUrl="@RepositoryUrl" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <OperatorActions />
+        </MudItem>
+        <MudItem xs="12">
+            <RecentLogPanel MaxEntries="50" />
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    [Inject] private IConfiguration Configuration { get; set; } = default!;
+
+    private string? RepositoryUrl => Configuration["GitHub:Repository:Url"];
+}
