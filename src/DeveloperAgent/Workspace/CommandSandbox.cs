@@ -19,24 +19,38 @@ public sealed class CommandSandbox : ICommandSandbox
     private readonly IPathDenyPolicy _pathDenyPolicy;
     private readonly ICommandDenyPolicy _commandDenyPolicy;
     private readonly ILogger<CommandSandbox> _logger;
+    private readonly IContainerRuntime? _containerRuntime;
+    private readonly ContainerRuntimeOptions _containerOptions;
 
     /// <summary>
     /// Initialises a new <see cref="CommandSandbox"/>.
     /// The constructor is <c>internal</c> because <see cref="IProcessRunner"/> is an
     /// internal abstraction — consumers resolve <see cref="ICommandSandbox"/> from DI.
     /// </summary>
+    /// <param name="containerRuntime">
+    /// Optional container runtime used when a caller requests isolation
+    /// (<c>isolate: true</c>) and <see cref="ContainerRuntimeOptions.Enabled"/> is set.
+    /// Null disables container isolation entirely — every command runs on the host.
+    /// </param>
+    /// <param name="containerOptions">
+    /// Container-runtime configuration. Null uses defaults (isolation disabled).
+    /// </param>
     internal CommandSandbox(
         IProcessRunner runner,
         IOptions<WorkspaceOptions> options,
         IPathDenyPolicy pathDenyPolicy,
         ICommandDenyPolicy commandDenyPolicy,
-        ILogger<CommandSandbox> logger)
+        ILogger<CommandSandbox> logger,
+        IContainerRuntime? containerRuntime = null,
+        IOptions<ContainerRuntimeOptions>? containerOptions = null)
     {
         _runner = runner;
         _options = options;
         _pathDenyPolicy = pathDenyPolicy;
         _commandDenyPolicy = commandDenyPolicy;
         _logger = logger;
+        _containerRuntime = containerRuntime;
+        _containerOptions = containerOptions?.Value ?? new ContainerRuntimeOptions();
     }
 
     /// <inheritdoc />
@@ -44,7 +58,8 @@ public sealed class CommandSandbox : ICommandSandbox
         string commandLine,
         string workingDirectory,
         TimeSpan timeout,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool isolate = false)
     {
         var opts = _options.Value;
 
@@ -81,6 +96,38 @@ public sealed class CommandSandbox : ICommandSandbox
             argv[0], argv.Count - 1, workingDirectory, outputHash);
 
         // ── 7. Execute ───────────────────────────────────────────────────────
+        // Container isolation is opt-in per call AND gated by config. When a caller
+        // requests it (shell_run) and ContainerRuntime.Enabled is set with a runtime
+        // available, the command runs inside an isolated child container; otherwise it
+        // runs on the host (git clone/push and all callers when isolation is disabled).
+        if (isolate && _containerOptions.Enabled && _containerRuntime is not null)
+        {
+            var request = new ContainerRunRequest(
+                Executable: argv[0],
+                Arguments: argv.Skip(1).ToArray(),
+                WorkspacePath: opts.RootPath,
+                MountPath: _containerOptions.MountPath,
+                WorkingDirectoryInContainer: MapToContainerPath(
+                    workingDirectory, opts.RootPath, _containerOptions.MountPath),
+                Timeout: timeout);
+
+            var containerResult = await _containerRuntime
+                .RunInContainerAsync(request, ct)
+                .ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Sandbox: {Executable} exited {ExitCode} in {Elapsed:N0}ms TimedOut={TimedOut} (container, id={InvocationId})",
+                argv[0], containerResult.ExitCode, containerResult.Elapsed.TotalMilliseconds,
+                containerResult.TimedOut, outputHash);
+
+            return new CommandResult(
+                containerResult.ExitCode,
+                containerResult.Stdout,
+                containerResult.Stderr,
+                containerResult.Elapsed,
+                containerResult.TimedOut);
+        }
+
         var result = await _runner.RunAsync(
             argv[0],
             argv.Skip(1).ToArray(),
@@ -98,6 +145,27 @@ public sealed class CommandSandbox : ICommandSandbox
             result.Stderr,
             result.Elapsed,
             result.TimedOut);
+    }
+
+    /// <summary>
+    /// Rewrites a host working directory (under <paramref name="hostRoot"/>) to its
+    /// container-side path (under <paramref name="mountPath"/>). The workspace root is
+    /// bind-mounted at <paramref name="mountPath"/>, so a CWD of
+    /// <c>{hostRoot}/item1/repo</c> maps to <c>{mountPath}/item1/repo</c>. If the CWD is
+    /// not under the root, the mount path itself is used as a safe fallback.
+    /// </summary>
+    internal static string MapToContainerPath(string workingDirectory, string hostRoot, string mountPath)
+    {
+        var absoluteCwd = Path.GetFullPath(workingDirectory);
+        var absoluteRoot = Path.GetFullPath(hostRoot);
+
+        var relative = Path.GetRelativePath(absoluteRoot, absoluteCwd);
+        if (relative == "." || relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            return mountPath;
+
+        // Container paths are always POSIX-style.
+        var posixRelative = relative.Replace('\\', '/');
+        return $"{mountPath.TrimEnd('/')}/{posixRelative}";
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
