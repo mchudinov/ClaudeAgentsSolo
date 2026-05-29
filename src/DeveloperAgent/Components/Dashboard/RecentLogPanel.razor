@@ -1,0 +1,40 @@
+@using DeveloperAgent.Dashboard
+@using Serilog.Events
+@inject IRecentLogBuffer LogBuffer
+
+<MudPaper Class="pa-4" Elevation="2" data-testid="recent-log">
+    <MudText Typo="Typo.h6" GutterBottom="true">Recent log (@Entries.Count)</MudText>
+
+    @if (Entries.Count == 0)
+    {
+        <MudText Typo="Typo.body2" data-testid="log-empty">No log entries yet.</MudText>
+    }
+    else
+    {
+        <MudList T="RecentLogEntry" Dense="true">
+            @foreach (var entry in Entries)
+            {
+                <MudListItem T="RecentLogEntry" data-testid="log-entry">
+                    <MudText Typo="Typo.caption" Color="@LevelColor(entry.Level)">
+                        @entry.Timestamp.ToString("HH:mm:ss") [@entry.Level] @entry.Message
+                    </MudText>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>Maximum number of newest entries to render. Defaults to 50.</summary>
+    [Parameter] public int MaxEntries { get; set; } = 50;
+
+    private IReadOnlyList<RecentLogEntry> Entries => LogBuffer.Recent(MaxEntries);
+
+    private static Color LevelColor(LogEventLevel level) => level switch
+    {
+        LogEventLevel.Error or LogEventLevel.Fatal => Color.Error,
+        LogEventLevel.Warning => Color.Warning,
+        LogEventLevel.Debug or LogEventLevel.Verbose => Color.Secondary,
+        _ => Color.Default
+    };
+}

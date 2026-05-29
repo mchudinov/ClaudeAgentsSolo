@@ -4,6 +4,7 @@ using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.AgentMemory;
 using DeveloperAgent.Configuration;
+using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Resilience;
@@ -53,9 +54,15 @@ public class Program
                 .AddEnvironmentVariables();
 
             // ── Logging ──────────────────────────────────────────────────────────
+            // Step-27 (P2-L): a single RecentLogBuffer instance serves two roles — a
+            // Serilog sink the main logger writes into AND the IRecentLogBuffer the
+            // operator dashboard reads. The same instance is registered in DI below;
+            // separate instances would leave the dashboard reading an empty buffer.
+            var recentLogBuffer = new RecentLogBuffer(capacity: 200);
             var logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .Enrich.FromLogContext()
+                .WriteTo.Sink(recentLogBuffer)
                 .CreateLogger();
             builder.Logging.ClearProviders();
             builder.Logging.AddSerilog(logger);
@@ -267,6 +274,11 @@ public class Program
             });
 
             // ── UI ────────────────────────────────────────────────────────────────
+            // Step-27 (P2-L): operator dashboard. The RecentLogBuffer created above is
+            // registered here as the shared IRecentLogBuffer read by the dashboard, and
+            // IOperatorCommandService backs the pause/resume/cancel buttons.
+            builder.Services.AddSingleton<IRecentLogBuffer>(recentLogBuffer);
+            builder.Services.AddSingleton<IOperatorCommandService, OperatorCommandService>();
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
             builder.Services.AddMudServices();

@@ -1,0 +1,89 @@
+@using DeveloperAgent.Lifecycle
+@inject ITaskStateStore TaskStateStore
+
+<MudPaper Class="pa-4" Elevation="2" data-testid="task-status">
+    <MudText Typo="Typo.h6" GutterBottom="true">Current task</MudText>
+
+    @if (Task is null)
+    {
+        <MudAlert Severity="Severity.Info" data-testid="task-idle">Agent is idle — no task in progress.</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Hover="false" Bordered="false" Striped="false">
+            <tbody>
+                <tr>
+                    <td><MudText Typo="Typo.body2">Title</MudText></td>
+                    <td data-testid="task-title"><MudText Typo="Typo.body1">@Task.Title</MudText></td>
+                </tr>
+                <tr>
+                    <td><MudText Typo="Typo.body2">Issue</MudText></td>
+                    <td data-testid="task-issue"><MudText Typo="Typo.body1">#@Task.IssueNumber</MudText></td>
+                </tr>
+                <tr>
+                    <td><MudText Typo="Typo.body2">Phase</MudText></td>
+                    <td data-testid="task-phase">
+                        <MudChip T="string" Color="@PhaseColor(Task.Phase)" Size="Size.Small">@PhaseLabel(Task.Phase)</MudChip>
+                    </td>
+                </tr>
+                <tr>
+                    <td><MudText Typo="Typo.body2">Branch</MudText></td>
+                    <td data-testid="task-branch"><MudText Typo="Typo.body1">@(Task.BranchName ?? "—")</MudText></td>
+                </tr>
+                <tr>
+                    <td><MudText Typo="Typo.body2">Pull request</MudText></td>
+                    <td data-testid="task-pr">
+                        @if (Task.PullRequestNumber is int pr)
+                        {
+                            <MudLink Href="@PullRequestUrl(pr)" Target="_blank" data-testid="task-pr-link">#@pr</MudLink>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body1">—</MudText>
+                        }
+                    </td>
+                </tr>
+                @if (!string.IsNullOrEmpty(Task.LastError))
+                {
+                    <tr>
+                        <td><MudText Typo="Typo.body2">Last error</MudText></td>
+                        <td data-testid="task-error"><MudText Typo="Typo.body2" Color="Color.Error">@Task.LastError</MudText></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>
+    /// Optional explicit GitHub repository URL (e.g. https://github.com/owner/repo) used to
+    /// build the PR link. When null, only the PR number is shown without a hyperlink target.
+    /// </summary>
+    [Parameter] public string? RepositoryUrl { get; set; }
+
+    private TaskState? Task => TaskStateStore.Current;
+
+    private string? PullRequestUrl(int prNumber) =>
+        string.IsNullOrEmpty(RepositoryUrl) ? null : $"{RepositoryUrl.TrimEnd('/')}/pull/{prNumber}";
+
+    private static string PhaseLabel(TaskPhase phase) => phase switch
+    {
+        TaskPhase.Acquired => "Acquired",
+        TaskPhase.WorkspaceReady => "Workspace ready",
+        TaskPhase.AgentRunning => "In progress",
+        TaskPhase.PullRequestOpen => "PR open",
+        TaskPhase.AwaitingReview => "Awaiting review",
+        TaskPhase.Done => "Done",
+        TaskPhase.Failed => "Failed",
+        _ => phase.ToString()
+    };
+
+    private static Color PhaseColor(TaskPhase phase) => phase switch
+    {
+        TaskPhase.Failed => Color.Error,
+        TaskPhase.Done => Color.Success,
+        TaskPhase.AwaitingReview => Color.Warning,
+        _ => Color.Primary
+    };
+}
