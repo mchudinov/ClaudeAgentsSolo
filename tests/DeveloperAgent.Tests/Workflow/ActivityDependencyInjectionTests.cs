@@ -42,6 +42,7 @@ public sealed class ActivityDependencyInjectionTests
         typeof(IAgentRunner),
         typeof(ITaskStateStore),
         typeof(IAgentSessionStore),
+        typeof(IAgentMemoryStore),
         typeof(AgentMetrics),
         typeof(TimeProvider),
         typeof(IDaprWorkflowClient),
