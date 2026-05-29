@@ -24,6 +24,15 @@ public interface ICommandSandbox
     /// </param>
     /// <param name="timeout">Maximum wall-clock time before the child process is killed.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="isolate">
+    /// When <see langword="true"/> and container isolation is enabled
+    /// (<see cref="DeveloperAgent.Sandbox.ContainerRuntimeOptions.Enabled"/>), the command
+    /// runs inside an isolated child container with the workspace bind-mounted read-write
+    /// and the rest of the host read-only. Allowlist / deny / working-directory validation
+    /// runs identically regardless of this flag — isolation is defence-in-depth, not a
+    /// replacement for the allowlist. Callers that need host network and host state (e.g.
+    /// git clone/push) leave this <see langword="false"/> (the default).
+    /// </param>
     /// <returns>A <see cref="CommandResult"/> with stdout, stderr, exit code, elapsed time, and timeout flag.</returns>
     /// <exception cref="SandboxViolationException">
     /// Thrown when the command is not in the allowlist or the working directory is
@@ -33,5 +42,6 @@ public interface ICommandSandbox
         string commandLine,
         string workingDirectory,
         TimeSpan timeout,
-        CancellationToken ct);
+        CancellationToken ct,
+        bool isolate = false);
 }
