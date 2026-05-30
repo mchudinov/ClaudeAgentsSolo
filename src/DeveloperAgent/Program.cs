@@ -293,25 +293,11 @@ public class Program
             // DeveloperTaskWorkflow drives the full lifecycle of a single GitHub
             // project item. Workflow instance ID convention:
             //   "github-project-item-{itemId}"
-            // The dispatcher (Step-14, P2-D part 2/3) will schedule new instances.
-            builder.Services.AddDaprWorkflow(opt =>
-            {
-                opt.RegisterWorkflow<DeveloperTaskWorkflow>();
-                opt.RegisterActivity<AcquireTaskActivity>();
-                opt.RegisterActivity<CreateBranchActivity>();
-                opt.RegisterActivity<PlanActivity>();
-                opt.RegisterActivity<ModifyCodeActivity>();
-                opt.RegisterActivity<BuildActivity>();
-                opt.RegisterActivity<TestActivity>();
-                opt.RegisterActivity<CreatePullRequestActivity>();
-                opt.RegisterActivity<WaitForReviewActivity>();
-                opt.RegisterActivity<DoneActivity>();
-                opt.RegisterActivity<CompactMemoryActivity>();
-                // Step-18: AgentSession persistence activities.
-                opt.RegisterActivity<LoadAgentSessionActivity>();
-                opt.RegisterActivity<SaveAgentSessionActivity>();
-                opt.RegisterActivity<DeleteAgentSessionActivity>();
-            });
+            // The dispatcher (Step-14, P2-D part 2/3) schedules new instances.
+            // AddDeveloperTaskWorkflow also bridges IDaprWorkflowClient → the concrete
+            // DaprWorkflowClient (which AddDaprWorkflow registers) so AgentLifecycleService
+            // and WaitForReviewActivity can resolve the interface they inject.
+            builder.Services.AddDeveloperTaskWorkflow();
 
             // ── UI ────────────────────────────────────────────────────────────────
             // Step-27 (P2-L): operator dashboard. The RecentLogBuffer created above is
