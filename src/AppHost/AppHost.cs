@@ -10,12 +10,19 @@ var builder = DistributedApplication.CreateBuilder(args);
 // P2-A part 3/3.
 var agentState = builder.AddRedis("agent-state");
 
-// Dapr state-store component, programmatically registered via the
-// CommunityToolkit hosting integration. The toolkit chooses the concrete
-// component type at run-/deploy-time; we link it to the Redis resource via
-// WaitFor so the sidecar only starts once Redis is healthy.
+// Dapr state-store component. We hand daprd the actor-enabled component YAML
+// (agent-state-store.yaml) via LocalPath rather than letting the toolkit emit a
+// metadata-less default: Dapr Workflows run on the Dapr actor runtime, which
+// requires the backing state store to set `actorStateStore: "true"`. With the
+// metadata-less default, workflow scheduling fails at runtime with "the state
+// store is not configured to use the actor runtime". WaitFor links the sidecar
+// startup to Redis health.
+var stateStoreYamlPath = ResolveDaprComponentPath("agent-state-store.yaml");
 var stateStore = builder
-    .AddDaprStateStore("agent-state-store")
+    .AddDaprComponent(
+        "agent-state-store",
+        "state",
+        new DaprComponentOptions { LocalPath = stateStoreYamlPath })
     .WaitFor(agentState);
 
 // Dapr Resiliency CRD (Step-26, P2-K). The YAML is published with the

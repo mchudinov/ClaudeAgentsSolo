@@ -1,0 +1,25 @@
+# Dapr state-store component for the DeveloperAgent (P2-A).
+#
+# Loaded by daprd from the sidecar --resources-path. This is the actor-enabled
+# component the agent-state-store name resolves to: Dapr Workflows run on the
+# Dapr actor runtime, which requires the backing state store to set
+# `actorStateStore: "true"`. Without it, scheduling a workflow fails at runtime
+# with: "the state store is not configured to use the actor runtime".
+#
+# redisHost/redisPassword are local-dev defaults. The Aspire AppHost runs the
+# `agent-state` Redis as a container published on the host's 6379; the daprd
+# sidecar reaches it via localhost:6379 with no password.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: agent-state-store
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: localhost:6379
+    - name: redisPassword
+      value: ""
+    - name: actorStateStore
+      value: "true"
