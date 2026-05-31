@@ -636,6 +636,115 @@ public sealed class GitHubProjectServiceTests
         result.Title.Should().Be("Implement feature X");
     }
 
+    // ── §D.6b: DraftIssue pickup (regression: drafts were silently skipped) ────
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_returns_DraftIssue_in_Ready_column()
+    {
+        // Reproduces the bug: a project whose only Ready item is a DraftIssue.
+        // Previously QueryProjectItemsAsync skipped all DraftIssue content, so this
+        // returned null. The draft must now surface with ContentNumber 0 (drafts
+        // have no number) and State Ready.
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildItemsResponse(includeIssue: false, includeDraftIssue: true));
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().NotBeNull("a DraftIssue in the Ready column must be picked up");
+        result!.Title.Should().Be("Draft task");
+        result.BodyMarkdown.Should().Be("Draft body");
+        result.ContentNumber.Should().Be(0, "draft issues have no number; the service defaults to 0");
+        result.State.Should().Be(ProjectState.Ready);
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_real_Issue_still_returned_with_its_number()
+    {
+        // Regression guard: non-draft handling is unchanged — a real Issue in the
+        // Ready column keeps its repository number.
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse());
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildItemsResponse(includeIssue: true, includeDraftIssue: false, issueNumber: 7, issueTitle: "Real issue task"));
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.ContentNumber.Should().Be(7, "real issues carry their repository number through unchanged");
+        result.Title.Should().Be("Real issue task");
+        result.State.Should().Be(ProjectState.Ready);
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_excludes_DraftIssue_not_in_Ready_column()
+    {
+        // A DraftIssue tagged with a non-Ready option (Backlog) must not be surfaced.
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("options")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(BuildOptionIdsResponse(options:
+               [
+                   ("Ready", "opt-ready"),
+                   ("In Progress", "opt-inprogress"),
+                   ("In Review", "opt-inreview"),
+                   ("Done", "opt-done"),
+                   ("Backlog", "opt-backlog")
+               ]));
+
+        var backlogDraftJson = """
+            {
+              "data": {
+                "organization": {
+                  "projectV2": {
+                    "items": {
+                      "nodes": [
+                        {
+                          "id": "pvitem-draft-backlog",
+                          "fieldValues": {
+                            "nodes": [
+                              { "optionId": "opt-backlog", "field": { "name": "Status" } }
+                            ]
+                          },
+                          "content": {
+                            "__typename": "DraftIssue",
+                            "id": "draft-node-backlog",
+                            "title": "Backlog draft",
+                            "body": "Not ready yet"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        graphQL.RunQueryAsync(Arg.Is<string>(s => s.Contains("items")), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse(backlogDraftJson).RootElement);
+
+        var svc = CreateService(graphQL, rest);
+
+        var result = await svc.TryGetNextReadyItemAsync(CancellationToken.None);
+
+        result.Should().BeNull("the only item is a Backlog-tagged draft, not Ready");
+    }
+
     // ── §D.7: GetInFlightItemsAsync ───────────────────────────────────────────
 
     [Fact]
