@@ -428,11 +428,6 @@ internal sealed class GitHubProjectService : IGitHubProjectService
             if (!node.TryGetProperty("content", out var content)) continue;
             if (!node.TryGetProperty("id", out var itemIdProp)) continue;
 
-            // Skip DraftIssue — the agent cannot operate on them
-            if (content.TryGetProperty("__typename", out var typeProp) &&
-                typeProp.GetString() == "DraftIssue")
-                continue;
-
             // Determine state; drop items whose option ID isn't in our map
             var state = DetermineState(node, lookup.IdToState);
             if (state is null) continue;
@@ -443,7 +438,8 @@ internal sealed class GitHubProjectService : IGitHubProjectService
 
             var itemId = itemIdProp.GetString()!;
             var contentNodeId = content.GetProperty("id").GetString()!;
-            var number = content.GetProperty("number").GetInt32();
+            // DraftIssue content has no `number` field; default to 0 for drafts.
+            var number = content.TryGetProperty("number", out var numProp) ? numProp.GetInt32() : 0;
             var title = content.GetProperty("title").GetString()!;
             var body = content.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() ?? "" : "";
 
