@@ -147,6 +147,60 @@ public sealed class CommandSandboxTests
             Arg.Any<CancellationToken>());
     }
 
+    // ── Broad command-family allowlist ───────────────────────────────────────
+    // A bare family entry ("dotnet", "git", "gh", "ls") allows every subcommand of
+    // that program. The deny policy still runs first, so dangerous verbs inside an
+    // allowed family are rejected.
+
+    [Theory]
+    [InlineData("dotnet ef migrations add Init")]
+    [InlineData("gh pr create --fill")]
+    [InlineData("gh issue list")]
+    [InlineData("git rebase --abort")]
+    [InlineData("ls -la src")]
+    public async Task Bare_family_entry_allows_any_subcommand(string commandLine)
+    {
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["dotnet", "git", "gh", "ls", "dir", "pwd"]);
+
+        await sandbox.RunAsync(
+            commandLine, ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("gh repo delete owner/repo --yes")]
+    [InlineData("gh auth token")]
+    [InlineData("gh api -X DELETE /repos/owner/repo")]
+    [InlineData("gh api --method POST /repos/owner/repo/issues")]
+    [InlineData("dotnet tool install -g evil.tool")]
+    [InlineData("git push --force origin main")]
+    public async Task Deny_policy_overrides_a_broadly_allowed_family(string commandLine)
+    {
+        // Even though "gh", "dotnet" and "git" families are allowed, the deny policy
+        // (consulted before the allowlist) blocks these dangerous verbs and the
+        // runner is never invoked.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["dotnet", "git", "gh", "ls", "dir", "pwd"]);
+
+        var act = async () => await sandbox.RunAsync(
+            commandLine, ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<SandboxViolationException>();
+        await runner.DidNotReceive().RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
     // ── Allowlist miss ───────────────────────────────────────────────────────
 
     [Fact]

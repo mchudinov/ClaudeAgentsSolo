@@ -185,23 +185,24 @@ public sealed class WorkspaceOptionsTests
     }
 
     [Fact]
-    public void AllowedCommands_defaults_match_LLD_list()
+    public void AllowedCommands_defaults_are_broad_command_families()
     {
+        // The allowlist is a prefix allowlist (CommandSandbox.FindAllowlistEntry):
+        // a bare entry like "dotnet" allows every "dotnet …" invocation. We allow the
+        // whole dotnet / git / gh families plus the read-only file commands ls / dir
+        // and pwd. Dangerous verbs inside those families (git push --force, gh repo
+        // delete, gh auth, gh api -X DELETE/PUT/POST, dotnet tool install) are blocked
+        // by the command deny policy, which runs BEFORE the allowlist (deny wins).
+        // "cd" is intentionally absent: there is no real shell, so a "cd" segment would
+        // run as a direct exec and cannot change the agent's working directory.
         var options = new WorkspaceOptions();
         options.AllowedCommands.Should().BeEquivalentTo(new[]
         {
-            "dotnet restore",
-            "dotnet build",
-            "dotnet test",
-            "git clone",
-            "git symbolic-ref",
-            "git status",
-            "git branch",
-            "git diff",
-            "git checkout",
-            "git add",
-            "git commit",
-            "git push",
+            "dotnet",
+            "git",
+            "gh",
+            "ls",
+            "dir",
             "pwd",
         }, o => o.WithStrictOrdering());
     }

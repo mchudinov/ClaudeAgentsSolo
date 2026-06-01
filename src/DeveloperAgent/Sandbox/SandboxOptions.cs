@@ -52,6 +52,15 @@ public sealed record SandboxOptions
     /// privilege escalation (<c>chmod +x</c>), force-push and rewrites
     /// of remote state (<c>git push --force</c> / <c>-f</c>), and secret
     /// / branch-protection mutation through the <c>gh</c> CLI.
+    /// <para>
+    /// Because <see cref="Configuration.WorkspaceOptions.AllowedCommands"/> allows the
+    /// whole <c>dotnet</c> / <c>git</c> / <c>gh</c> families, the deny list also blocks
+    /// the dangerous verbs that breadth makes reachable: destructive repo / auth
+    /// operations (<c>gh repo delete</c>, <c>gh auth …</c>), mutating raw API calls
+    /// (<c>gh api -X/--method DELETE|PUT|POST</c>), and arbitrary tool acquisition
+    /// (<c>dotnet tool install</c>). NOTE: <c>gh api</c> with <c>PATCH</c>/<c>HEAD</c>
+    /// and <c>dotnet tool update</c> are NOT yet denied — add rules here if needed.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<CommandDenyRule> DeniedCommands { get; init; } =
     [
@@ -65,6 +74,18 @@ public sealed record SandboxOptions
         new CommandDenyRule(Name: "no-gh-secret-remove",Program: "gh",    ArgPatterns: ["secret", "remove"]),
         new CommandDenyRule(Name: "no-gh-secret-delete",Program: "gh",    ArgPatterns: ["secret", "delete"]),
         new CommandDenyRule(Name: "no-gh-branch-protection", Program: "gh", ArgPatterns: ["api"], ArgContains: ["protection"]),
+        // Destructive / credential gh verbs now reachable via the broad "gh" allowlist.
+        new CommandDenyRule(Name: "no-gh-repo-delete",  Program: "gh",    ArgPatterns: ["repo", "delete"]),
+        new CommandDenyRule(Name: "no-gh-auth",         Program: "gh",    ArgPatterns: ["auth"]),
+        // Mutating raw API calls — both the short (-X) and long (--method) flag forms.
+        new CommandDenyRule(Name: "no-gh-api-delete-x",      Program: "gh", ArgPatterns: ["api", "-X", "DELETE"]),
+        new CommandDenyRule(Name: "no-gh-api-delete-method", Program: "gh", ArgPatterns: ["api", "--method", "DELETE"]),
+        new CommandDenyRule(Name: "no-gh-api-put-x",         Program: "gh", ArgPatterns: ["api", "-X", "PUT"]),
+        new CommandDenyRule(Name: "no-gh-api-put-method",    Program: "gh", ArgPatterns: ["api", "--method", "PUT"]),
+        new CommandDenyRule(Name: "no-gh-api-post-x",        Program: "gh", ArgPatterns: ["api", "-X", "POST"]),
+        new CommandDenyRule(Name: "no-gh-api-post-method",   Program: "gh", ArgPatterns: ["api", "--method", "POST"]),
+        // Arbitrary tool acquisition via the broad "dotnet" allowlist.
+        new CommandDenyRule(Name: "no-dotnet-tool-install",  Program: "dotnet", ArgPatterns: ["tool", "install"]),
     ];
 
     /// <summary>
