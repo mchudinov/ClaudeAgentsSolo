@@ -1,13 +1,17 @@
 namespace DeveloperAgent.Workspace;
 
 /// <summary>
-/// Executes a single external command under the allowlist and working-directory
+/// Executes an external command line under the allowlist and working-directory
 /// constraints defined in <see cref="DeveloperAgent.Configuration.WorkspaceOptions"/>.
 /// </summary>
 /// <remarks>
-/// Commands are tokenised into an argv array before execution — there is no shell
-/// interpretation. <c>&amp;&amp;</c>, <c>||</c>, redirections, and globbing are
-/// treated as literal arguments.
+/// A command line may chain several commands with the top-level connectors
+/// <c>&amp;&amp;</c>, <c>||</c> and <c>;</c>. Each segment is tokenised into an argv
+/// array and validated against the allowlist / deny policy independently, and the
+/// whole line is rejected if ANY segment is disallowed (fail-closed). There is still
+/// no real shell: each segment runs as a direct child-process exec, so connectors
+/// inside quotes, a lone <c>|</c>, redirections, and globbing are treated as literal
+/// arguments — never expanded.
 /// </remarks>
 public interface ICommandSandbox
 {

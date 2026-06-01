@@ -73,6 +73,27 @@ public sealed class CommandSandboxTests
         return runner;
     }
 
+    /// <summary>
+    /// A runner that returns <paramref name="results"/> in order across successive calls
+    /// (the last value repeats for any further calls). Used to model a compound command
+    /// where each segment yields a different exit code / stdout.
+    /// </summary>
+    private static IProcessRunner SequencedRunner(params ProcessRunResult[] results)
+    {
+        var runner = Substitute.For<IProcessRunner>();
+        runner.RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>())
+            .Returns(results[0], results.Skip(1).ToArray());
+        return runner;
+    }
+
+    private static ProcessRunResult Ok(string stdout = "", int exitCode = 0) =>
+        new(exitCode, stdout, "", TimeSpan.FromMilliseconds(10), false);
+
     // ── Allowlist hit ────────────────────────────────────────────────────────
 
     [Fact]
@@ -318,11 +339,172 @@ public sealed class CommandSandboxTests
         await act.Should().NotThrowAsync<SandboxViolationException>();
     }
 
-    // ── No shell interpretation ──────────────────────────────────────────────
+    // ── Compound commands: && || ; chaining ──────────────────────────────────
+    // The sandbox splits a command line on top-level &&, || and ; operators,
+    // validates EVERY segment against the deny policy + allowlist before running
+    // anything (fail-closed), then executes segments sequentially honouring the
+    // operator's short-circuit semantics. Each segment still runs as a direct
+    // exec via IProcessRunner — there is no real shell, so non-split metacharacters
+    // (single |, redirects, $(), globs) remain literal arguments.
 
     [Fact]
-    public async Task Shell_operators_are_passed_as_literal_args_not_expanded()
+    public async Task Compound_runs_each_allowed_segment_in_sequence()
     {
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["pwd", "git status", "git branch"]);
+
+        await sandbox.RunAsync(
+            "pwd && git status && git branch --show-current",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(3).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compound_rejects_and_runs_nothing_when_any_segment_not_allowed()
+    {
+        // Fail-closed: if a LATER segment is disallowed, the whole compound is
+        // rejected and NO segment runs — even the allowed first one.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["git status"]);
+
+        var act = async () => await sandbox.RunAsync(
+            "git status && rm -rf /",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<SandboxViolationException>();
+        await runner.DidNotReceive().RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compound_rejects_and_runs_nothing_when_any_segment_is_denied()
+    {
+        // The deny policy applies per-segment; a denied later segment fails the whole chain.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["git status", "git push"]);
+
+        var act = async () => await sandbox.RunAsync(
+            "git status && git push --force",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<SandboxViolationException>()
+                 .WithMessage("*--force*");
+        await runner.DidNotReceive().RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compound_and_short_circuits_when_earlier_segment_fails()
+    {
+        // "a && b": b runs only if a succeeded. First segment exits 1 → b is skipped.
+        var runner = SequencedRunner(Ok(exitCode: 1), Ok());
+        var sandbox = BuildSandbox(runner, ["pwd", "git status"]);
+
+        var result = await sandbox.RunAsync(
+            "pwd && git status",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+        result.ExitCode.Should().Be(1, because: "the exit code is that of the last executed segment");
+    }
+
+    [Fact]
+    public async Task Compound_semicolon_runs_second_segment_even_when_first_fails()
+    {
+        // "a ; b": b always runs regardless of a's exit code.
+        var runner = SequencedRunner(Ok(exitCode: 1), Ok());
+        var sandbox = BuildSandbox(runner, ["pwd", "git status"]);
+
+        var result = await sandbox.RunAsync(
+            "pwd ; git status",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(2).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+        result.ExitCode.Should().Be(0, because: "the last executed segment (git status) succeeded");
+    }
+
+    [Fact]
+    public async Task Compound_or_runs_second_segment_only_when_first_fails()
+    {
+        // "a || b": b runs only if a FAILED. First segment exits 0 → b is skipped.
+        var runner = SequencedRunner(Ok(), Ok());
+        var sandbox = BuildSandbox(runner, ["pwd", "git status"]);
+
+        await sandbox.RunAsync(
+            "pwd || git status",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compound_concatenates_stdout_of_executed_segments_in_order()
+    {
+        var runner = SequencedRunner(Ok(stdout: "AAA"), Ok(stdout: "BBB"));
+        var sandbox = BuildSandbox(runner, ["pwd", "git status"]);
+
+        var result = await sandbox.RunAsync(
+            "pwd && git status",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        result.Stdout.Should().Be("AAABBB");
+    }
+
+    [Fact]
+    public async Task Operators_inside_quotes_are_not_treated_as_separators()
+    {
+        // "&&" inside a quoted commit message must NOT split the command.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["git commit"]);
+
+        await sandbox.RunAsync(
+            "git commit -m \"fix a && b in parser\"",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    // ── No shell interpretation for non-split metacharacters ──────────────────
+
+    [Fact]
+    public async Task Pipe_and_redirect_operators_are_passed_as_literal_args_not_split()
+    {
+        // We split ONLY on &&, ||, ; — a single pipe '|' and redirects are NOT
+        // shell operators here; they stay as literal argv tokens of a single segment.
         IReadOnlyList<string>? capturedArgs = null;
         var runner = Substitute.For<IProcessRunner>();
         runner.RunAsync(
@@ -336,14 +518,20 @@ public sealed class CommandSandboxTests
         var sandbox = BuildSandbox(runner, ["dotnet build"]);
 
         await sandbox.RunAsync(
-            "dotnet build && echo x",
+            "dotnet build | tee log.txt",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        // argv passed to runner should contain "&&" and "echo" as separate, literal arguments
+        // The single pipe and its operands are literal arguments of one "dotnet build" call.
         capturedArgs.Should().NotBeNull();
-        capturedArgs!.Should().Contain("&&");
-        capturedArgs.Should().Contain("echo");
-        capturedArgs.Should().Contain("x");
+        capturedArgs!.Should().Contain("|");
+        capturedArgs.Should().Contain("tee");
+        capturedArgs.Should().Contain("log.txt");
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
     }
 
     // ── Timeout propagation ──────────────────────────────────────────────────
@@ -490,6 +678,62 @@ public sealed class CommandSandboxTests
         var result = CommandSandbox.Tokenise("git commit -m 'my message'");
 
         result.Should().Equal("git", "commit", "-m", "my message");
+    }
+
+    // ── SplitTopLevel unit tests ─────────────────────────────────────────────
+
+    [Fact]
+    public void SplitTopLevel_single_command_has_one_segment_with_empty_connector()
+    {
+        var result = CommandSandbox.SplitTopLevel("git status --short");
+
+        result.Should().HaveCount(1);
+        result[0].Connector.Should().BeEmpty();
+        result[0].Text.Should().Be("git status --short");
+    }
+
+    [Fact]
+    public void SplitTopLevel_splits_on_double_ampersand()
+    {
+        var result = CommandSandbox.SplitTopLevel("pwd && git status");
+
+        result.Should().HaveCount(2);
+        result[0].Connector.Should().BeEmpty();
+        result[0].Text.Should().Be("pwd");
+        result[1].Connector.Should().Be("&&");
+        result[1].Text.Should().Be("git status");
+    }
+
+    [Fact]
+    public void SplitTopLevel_splits_on_semicolon_and_double_pipe_recording_each_connector()
+    {
+        var result = CommandSandbox.SplitTopLevel("pwd ; git status || git diff");
+
+        result.Should().HaveCount(3);
+        result[0].Connector.Should().BeEmpty();
+        result[0].Text.Should().Be("pwd");
+        result[1].Connector.Should().Be(";");
+        result[1].Text.Should().Be("git status");
+        result[2].Connector.Should().Be("||");
+        result[2].Text.Should().Be("git diff");
+    }
+
+    [Fact]
+    public void SplitTopLevel_does_not_split_on_operators_inside_quotes()
+    {
+        var result = CommandSandbox.SplitTopLevel("git commit -m \"a && b ; c\"");
+
+        result.Should().HaveCount(1);
+        result[0].Text.Should().Be("git commit -m \"a && b ; c\"");
+    }
+
+    [Fact]
+    public void SplitTopLevel_does_not_split_on_single_pipe()
+    {
+        var result = CommandSandbox.SplitTopLevel("dotnet build | tee log.txt");
+
+        result.Should().HaveCount(1);
+        result[0].Text.Should().Be("dotnet build | tee log.txt");
     }
 
     // ── StripLeadingConfigPairs unit tests ───────────────────────────────────
