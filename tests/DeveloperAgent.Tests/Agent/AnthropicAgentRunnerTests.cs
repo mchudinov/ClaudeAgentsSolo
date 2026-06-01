@@ -411,6 +411,38 @@ public sealed class AnthropicAgentRunnerTests
         result.Outcome.Should().Be(AgentRunOutcome.Completed);
     }
 
+    // ── Test: Temperature is not sent (deprecated for the model) ─────────────
+
+    [Fact]
+    public async Task RunAsync_does_not_set_Temperature_on_ChatOptions()
+    {
+        // Regression guard: newer Anthropic models reject the `temperature` request field
+        // ("temperature is deprecated for this model" → AnthropicBadRequestException). The
+        // runner must leave ChatOptions.Temperature unset (null) so the provider omits it.
+        var localTool = new FakeTool { Name = "read_file" };
+
+        ChatOptions? observedOptions = null;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                observedOptions = ci.Arg<ChatOptions>();
+                return Task.FromResult(TextResponse("done"));
+            });
+
+        var runner = BuildRunner(chatClient, [localTool]);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        observedOptions.Should().NotBeNull();
+        observedOptions!.Temperature.Should().BeNull(
+            because: "the model rejects a `temperature` request field; it must not be sent");
+    }
+
     // ── Test: API error from chat client ─────────────────────────────────────
 
     [Fact]

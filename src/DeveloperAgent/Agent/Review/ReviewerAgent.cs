@@ -117,7 +117,9 @@ public sealed class ReviewerAgent : IReviewerAgent
                 Instructions = _persona.Persona,
                 Tools = [submitTool],
                 MaxOutputTokens = MaxTokens,
-                Temperature = 0.0f,
+                // NOTE: Temperature is intentionally NOT set. Newer Anthropic models reject a
+                // `temperature` request field ("temperature is deprecated for this model" →
+                // AnthropicBadRequestException); leaving it null makes the provider omit it.
                 AllowMultipleToolCalls = false,
             },
         };
