@@ -25,10 +25,12 @@ public sealed record WorkspaceOptions
         "git clone",
         "git symbolic-ref",
         "git status",
+        "git branch",
         "git diff",
         "git checkout",
         "git add",
         "git commit",
         "git push",
+        "pwd",
     ];
 }

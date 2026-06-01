@@ -196,11 +196,13 @@ public sealed class WorkspaceOptionsTests
             "git clone",
             "git symbolic-ref",
             "git status",
+            "git branch",
             "git diff",
             "git checkout",
             "git add",
             "git commit",
             "git push",
+            "pwd",
         }, o => o.WithStrictOrdering());
     }
 }

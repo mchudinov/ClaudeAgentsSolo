@@ -63,39 +63,137 @@ public sealed class CommandSandbox : ICommandSandbox
     {
         var opts = _options.Value;
 
-        // ── 1. Validate CWD ──────────────────────────────────────────────────
+        // ── 1. Validate CWD (once for the whole command line) ────────────────
         ValidateCwd(workingDirectory, opts.RootPath, _pathDenyPolicy);
 
-        // ── 2. Tokenise command line ─────────────────────────────────────────
-        var argv = Tokenise(commandLine);
-        if (argv.Count == 0)
-            throw new SandboxViolationException("Empty command line.");
+        // ── 2. Split into top-level segments on &&, ||, ; ────────────────────
+        // No real shell is ever invoked — each segment runs as a direct exec via
+        // IProcessRunner. We recognise only these three connectors so multi-step
+        // inspection commands (e.g. "pwd && git status && git branch") work; every
+        // other metacharacter (single |, redirects, $(), globs) stays a literal arg.
+        var segments = SplitTopLevel(commandLine);
 
-        // ── 3. Strip leading -c <kv> pairs (git auth header pattern) ────────
-        var strippedArgv = StripLeadingConfigPairs(argv);
+        // ── 3. Validate EVERY segment BEFORE running any (fail-closed) ───────
+        // The deny policy runs BEFORE the allowlist (deny wins) for each segment.
+        // Because validation is a separate pass, a compound line is rejected in full
+        // if ANY segment is disallowed/denied — "git status && rm -rf /" never runs
+        // its allowed prefix.
+        var validated = new List<(string Connector, IReadOnlyList<string> Argv)>(segments.Count);
+        foreach (var segment in segments)
+        {
+            // Tokenise, then strip leading -c <kv> pairs (git auth header pattern).
+            var argv = Tokenise(segment.Text);
+            if (argv.Count == 0)
+                throw new SandboxViolationException(
+                    $"Empty command segment in '{commandLine}'.");
 
-        // ── 4. Deny policy — runs BEFORE the allowlist so deny wins ──────────
-        // A command on the allowlist can still hit a deny rule (e.g. "git" is
-        // allowed but "git push --force" is denied). The policy reports the
-        // matching rule name so the violation message points at the right rule.
-        var denyResult = _commandDenyPolicy.Check(strippedArgv);
-        if (denyResult.IsDenied)
-            throw new SandboxViolationException(
-                denyResult.Reason ?? $"command is denied by sandbox policy: rule '{denyResult.RuleName}'");
+            var strippedArgv = StripLeadingConfigPairs(argv);
 
-        // ── 5. Prefix-match against allowlist ───────────────────────────────
-        var matchedEntry = FindAllowlistEntry(strippedArgv, opts.AllowedCommands);
-        if (matchedEntry is null)
-            throw new SandboxViolationException(
-                $"Command '{commandLine}' does not match any entry in AllowedCommands.");
+            var denyResult = _commandDenyPolicy.Check(strippedArgv);
+            if (denyResult.IsDenied)
+                throw new SandboxViolationException(
+                    denyResult.Reason ?? $"command is denied by sandbox policy: rule '{denyResult.RuleName}'");
 
-        // ── 6. Log invocation (no secret values) ─────────────────────────────
-        var outputHash = ComputeInvocationId(commandLine);
+            var matchedEntry = FindAllowlistEntry(strippedArgv, opts.AllowedCommands);
+            if (matchedEntry is null)
+                throw new SandboxViolationException(
+                    $"Command '{segment.Text}' does not match any entry in AllowedCommands.");
+
+            // Execution uses the ORIGINAL argv (with the -c auth pair intact); only
+            // the allowlist/deny checks see the stripped form.
+            validated.Add((segment.Connector, argv));
+        }
+
+        // ── 4. Execute segments sequentially honouring connector semantics ───
+        // The first segment always runs; "&&" runs only after success, "||" only
+        // after failure, ";" always. A timeout ends the chain (the wall-clock
+        // budget is spent). Results are aggregated into a single CommandResult.
+        var executed = new List<CommandResult>(validated.Count);
+        CommandResult? previous = null;
+        foreach (var (connector, argv) in validated)
+        {
+            if (!ShouldRunSegment(connector, previous))
+                continue;
+
+            var segmentResult = await ExecuteSegmentAsync(
+                argv, workingDirectory, timeout, isolate, opts, ct).ConfigureAwait(false);
+
+            executed.Add(segmentResult);
+            previous = segmentResult;
+
+            if (segmentResult.TimedOut)
+                break;
+        }
+
+        return AggregateResults(executed);
+    }
+
+    /// <summary>
+    /// Decides whether a segment runs, given the connector preceding it and the
+    /// result of the previously executed segment. The first segment (empty
+    /// connector) and <c>;</c> always run; <c>&amp;&amp;</c> runs only when the
+    /// previous segment exited 0 and did not time out; <c>||</c> runs only when the
+    /// previous segment failed (non-zero exit).
+    /// </summary>
+    private static bool ShouldRunSegment(string connector, CommandResult? previous) => connector switch
+    {
+        "&&" => previous is { ExitCode: 0, TimedOut: false },
+        "||" => previous is null || previous.ExitCode != 0,
+        _ => true, // first segment ("") and ";" always run
+    };
+
+    /// <summary>
+    /// Combines the results of the executed segments into a single
+    /// <see cref="CommandResult"/>: stdout/stderr are concatenated in execution
+    /// order, the exit code is that of the LAST executed segment (shell <c>$?</c>
+    /// semantics), elapsed time is summed, and TimedOut is true if any segment
+    /// timed out. The first segment always runs, so <paramref name="executed"/> is
+    /// never empty; the single-segment case returns its result unchanged.
+    /// </summary>
+    private static CommandResult AggregateResults(IReadOnlyList<CommandResult> executed)
+    {
+        if (executed.Count == 1)
+            return executed[0];
+
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var elapsed = TimeSpan.Zero;
+        var timedOut = false;
+        foreach (var r in executed)
+        {
+            stdout.Append(r.Stdout);
+            stderr.Append(r.Stderr);
+            elapsed += r.Elapsed;
+            timedOut |= r.TimedOut;
+        }
+
+        return new CommandResult(
+            executed[^1].ExitCode,
+            stdout.ToString(),
+            stderr.ToString(),
+            elapsed,
+            timedOut);
+    }
+
+    /// <summary>
+    /// Logs and executes a single, already-validated segment — either inside an
+    /// isolated child container (when <paramref name="isolate"/> is requested and
+    /// container isolation is enabled) or as a direct host child process.
+    /// </summary>
+    private async Task<CommandResult> ExecuteSegmentAsync(
+        IReadOnlyList<string> argv,
+        string workingDirectory,
+        TimeSpan timeout,
+        bool isolate,
+        WorkspaceOptions opts,
+        CancellationToken ct)
+    {
+        // Log invocation (no secret values — argv only, never the environment).
+        var outputHash = ComputeInvocationId(string.Join(' ', argv));
         _logger.LogInformation(
             "Sandbox: running {Executable} with {ArgCount} args in {WorkingDirectory} (id={InvocationId})",
             argv[0], argv.Count - 1, workingDirectory, outputHash);
 
-        // ── 7. Execute ───────────────────────────────────────────────────────
         // Container isolation is opt-in per call AND gated by config. When a caller
         // requests it (shell_run) and ContainerRuntime.Enabled is set with a runtime
         // available, the command runs inside an isolated child container; otherwise it
@@ -235,6 +333,73 @@ public sealed class CommandSandbox : ICommandSandbox
             result.Add(argv[i]);
 
         return result;
+    }
+
+    /// <summary>
+    /// One segment of a compound command line together with the connector that
+    /// precedes it. <see cref="Connector"/> is the empty string for the first
+    /// segment, or one of <c>"&amp;&amp;"</c>, <c>"||"</c>, <c>";"</c>.
+    /// </summary>
+    internal readonly record struct CommandSegment(string Connector, string Text);
+
+    /// <summary>
+    /// Splits <paramref name="commandLine"/> into top-level segments on the shell
+    /// connectors <c>&amp;&amp;</c>, <c>||</c> and <c>;</c>, honouring single and
+    /// double quotes — a connector appearing inside quotes is NOT a separator. A
+    /// lone <c>&amp;</c> or <c>|</c> is treated as an ordinary character (no shell
+    /// background / pipe interpretation). Segment text is trimmed and keeps its
+    /// original quoting so <see cref="Tokenise"/> can run on each segment.
+    /// </summary>
+    internal static IReadOnlyList<CommandSegment> SplitTopLevel(string commandLine)
+    {
+        var segments = new List<CommandSegment>();
+        var current = new StringBuilder();
+        var connector = string.Empty; // connector preceding the segment being built
+        char? inQuote = null;
+
+        void Flush(string nextConnector)
+        {
+            segments.Add(new CommandSegment(connector, current.ToString().Trim()));
+            current.Clear();
+            connector = nextConnector;
+        }
+
+        for (var i = 0; i < commandLine.Length; i++)
+        {
+            var c = commandLine[i];
+
+            if (inQuote.HasValue)
+            {
+                if (c == inQuote.Value) inQuote = null;
+                current.Append(c);
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"' or '\'':
+                    inQuote = c;
+                    current.Append(c);
+                    break;
+                case ';':
+                    Flush(";");
+                    break;
+                case '&' when i + 1 < commandLine.Length && commandLine[i + 1] == '&':
+                    Flush("&&");
+                    i++; // consume the second '&'
+                    break;
+                case '|' when i + 1 < commandLine.Length && commandLine[i + 1] == '|':
+                    Flush("||");
+                    i++; // consume the second '|'
+                    break;
+                default:
+                    current.Append(c);
+                    break;
+            }
+        }
+
+        segments.Add(new CommandSegment(connector, current.ToString().Trim()));
+        return segments;
     }
 
     /// <summary>
