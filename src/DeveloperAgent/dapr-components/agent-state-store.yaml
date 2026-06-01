@@ -1,0 +1,25 @@
+# Dapr state-store component (self-hosted / `dapr init`).
+#
+# Targets the already-running `dapr_redis` container that `dapr init` starts on
+# localhost:6379 — Aspire does NOT manage a separate Redis resource for state.
+#
+# actorStateStore: "true" is required because Dapr Workflow runs on the Dapr
+# actor runtime, which fails to schedule unless its backing state store opts in.
+#
+# The component name MUST stay `agent-state-store`: the C# *.StateStoreName
+# constants, the actor/workflow runtime, and resiliency.yaml's targets.components
+# all reference it by that name.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: agent-state-store
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: "localhost:6379"
+    - name: redisPassword
+      value: ""
+    - name: actorStateStore
+      value: "true"
