@@ -12,6 +12,16 @@
     <PackageReference Include="Dapr.Workflow" Version="1.17.9" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.6.2" />
     <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.1.0-rc1" />
+    <!--
+      Pin the Anthropic provider (transitively required by Microsoft.Agents.AI.Anthropic,
+      which floors it at 12.11.0) up to 12.18.0+. Anthropic <= 12.16.0 was compiled against
+      Microsoft.Extensions.AI.Abstractions 10.4.0, where WebSearchToolResultContent exposed a
+      `Results` property; 10.5.x renamed it to `Outputs`. The rest of the graph (Microsoft.Agents.AI
+      1.6.2, ModelContextProtocol.Core 1.3.0) forces Abstractions to 10.5.x, so older Anthropic
+      builds threw MissingMethodException: get_Results() on every model call. 12.18.0 is the first
+      release compiled against Abstractions 10.5.x (it reads `Outputs`).
+    -->
+    <PackageReference Include="Anthropic" Version="12.24.1" />
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="Dapr.Actors" Version="1.17.9" />
     <PackageReference Include="Dapr.Actors.AspNetCore" Version="1.17.9" />
