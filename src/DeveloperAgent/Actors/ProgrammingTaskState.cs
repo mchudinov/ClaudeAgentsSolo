@@ -1,3 +1,4 @@
+using System.Runtime.Serialization;
 using DeveloperAgent.Lifecycle;
 
 namespace DeveloperAgent.Actors;
@@ -7,18 +8,31 @@ namespace DeveloperAgent.Actors;
 /// snapshot kept in the Dapr actor state store.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Distinct from <see cref="TaskState"/> (the lifecycle loop's in-process DTO).
 /// The lifecycle loop's <c>ITaskStateStore</c> is swapped to a Dapr-actor-backed
 /// implementation in Step-11; that step owns the mapping between the two records.
+/// </para>
+/// <para>
+/// The <c>[DataContract]</c>/<c>[DataMember]</c> annotations are mandatory: this
+/// type crosses the Dapr actor <i>remoting</i> proxy boundary as the return value
+/// of <see cref="IProgrammingTaskActor.GetStateAsync"/>, and Dapr's remoting
+/// transport serializes with <see cref="DataContractSerializer"/>. Without them a
+/// positional record has no parameterless constructor, so the serializer throws
+/// <c>InvalidDataContractException</c> and in-flight item recovery silently fails.
+/// (The actor's own state store uses JSON and does not need these — the remoting
+/// proxy does.) See <c>ProgrammingTaskStateSerializationTests</c> for the round-trip guard.
+/// </para>
 /// </remarks>
+[DataContract]
 public sealed record ProgrammingTaskState(
-    string ProjectItemId,
-    string? AgentId,
-    TaskPhase Phase,
-    string? BranchName,
-    int? PullRequestNumber,
-    int RetryCount,
-    ApprovalStatus ApprovalStatus)
+    [property: DataMember] string ProjectItemId,
+    [property: DataMember] string? AgentId,
+    [property: DataMember] TaskPhase Phase,
+    [property: DataMember] string? BranchName,
+    [property: DataMember] int? PullRequestNumber,
+    [property: DataMember] int RetryCount,
+    [property: DataMember] ApprovalStatus ApprovalStatus)
 {
     /// <summary>
     /// Returns an empty state record for the given project item, used when
