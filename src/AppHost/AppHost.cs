@@ -1,3 +1,4 @@
+using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -10,12 +11,23 @@ var builder = DistributedApplication.CreateBuilder(args);
 // P2-A part 3/3.
 var agentState = builder.AddRedis("agent-state");
 
-// Dapr state-store component, programmatically registered via the
-// CommunityToolkit hosting integration. The toolkit chooses the concrete
-// component type at run-/deploy-time; we link it to the Redis resource via
-// WaitFor so the sidecar only starts once Redis is healthy.
+// Dapr state-store component. The toolkit generates the redis state-store
+// component dynamically; we inject the *Aspire-managed* 'agent-state' Redis
+// endpoint (a dynamic host:port, NOT a hardcoded localhost:6379) via WithMetadata
+// so the daprd sidecar talks to the same Redis the AppHost owns. We also set
+// `actorStateStore: "true"`: Dapr Workflows run on the Dapr actor runtime, which
+// requires the backing state store to enable it — otherwise workflow scheduling
+// fails at runtime with "the state store is not configured to use the actor
+// runtime". WaitFor links the sidecar startup to Redis health.
+//
+// redisPassword is intentionally omitted: Aspire's local `AddRedis` container
+// runs without auth, matching the toolkit's redis state-store idiom.
+var redisHost = agentState.Resource.PrimaryEndpoint.Property(EndpointProperty.Host);
+var redisPort = agentState.Resource.PrimaryEndpoint.Property(EndpointProperty.Port);
 var stateStore = builder
     .AddDaprStateStore("agent-state-store")
+    .WithMetadata("redisHost", ReferenceExpression.Create($"{redisHost}:{redisPort}"))
+    .WithMetadata("actorStateStore", "true")
     .WaitFor(agentState);
 
 // Dapr Resiliency CRD (Step-26, P2-K). The YAML is published with the
