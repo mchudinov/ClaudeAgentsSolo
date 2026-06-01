@@ -164,8 +164,24 @@ public sealed class WorkspaceOptionsTests
     public void Defaults_match_documented_schema()
     {
         var options = new WorkspaceOptions();
-        options.RootPath.Should().Be("/workspace");
+        options.RootPath.Should().Be(Path.Combine(Path.GetTempPath(), "developer-agent", "workspace"));
         options.AllowedCommands.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void RootPath_default_lives_under_the_OS_temp_directory()
+    {
+        // Regression guard: the previous default ("/workspace") is a filesystem-root
+        // path that a non-root process cannot create, so WorkspaceManager.PrepareAsync
+        // failed with UnauthorizedAccessException on a normal host. The default must
+        // resolve to a location any process can create without elevated permissions.
+        var options = new WorkspaceOptions();
+
+        options.RootPath.Should().StartWith(Path.GetTempPath(),
+            because: "the default workspace root must be creatable by a non-root process; " +
+                     "a filesystem-root path like '/workspace' requires elevated permissions");
+        options.RootPath.Should().NotBe("/workspace",
+            because: "'/workspace' is an unwritable host default reserved for the in-container mount path");
     }
 
     [Fact]
