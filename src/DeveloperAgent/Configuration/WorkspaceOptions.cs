@@ -15,22 +15,33 @@ public sealed record WorkspaceOptions
 
     /// <summary>
     /// Command prefixes the agent (and orchestrator) are permitted to run.
-    /// The sandbox enforces this list; commands not starting with an entry here are rejected.
+    /// The sandbox enforces this list as a PREFIX allowlist
+    /// (<see cref="Workspace.CommandSandbox"/>): a bare entry such as <c>"dotnet"</c>
+    /// allows every <c>dotnet …</c> invocation. We deliberately allow the whole
+    /// <c>dotnet</c>, <c>git</c> and <c>gh</c> families plus the read-only file
+    /// commands <c>ls</c> / <c>dir</c> and <c>pwd</c>.
+    /// <para>
+    /// Breadth here is safe because the command DENY policy
+    /// (<see cref="Sandbox.SandboxOptions.DeniedCommands"/>) runs BEFORE this allowlist
+    /// and blocks the dangerous verbs reachable inside those families —
+    /// <c>git push --force</c>, <c>gh repo delete</c>, <c>gh auth …</c>,
+    /// <c>gh api -X/--method DELETE|PUT|POST</c>, <c>gh secret …</c>,
+    /// <c>dotnet tool install</c>, plus <c>curl</c>/<c>wget</c>/<c>chmod +x</c>.
+    /// </para>
+    /// <para>
+    /// <c>cd</c> is intentionally NOT allowed: the sandbox never invokes a real shell,
+    /// so a <c>cd</c> segment would run as a direct child-process exec and could not
+    /// change the agent's working directory. Callers set the working directory via the
+    /// <c>workingDirectory</c> argument instead.
+    /// </para>
     /// </summary>
     public IReadOnlyList<string> AllowedCommands { get; init; } =
     [
-        "dotnet restore",
-        "dotnet build",
-        "dotnet test",
-        "git clone",
-        "git symbolic-ref",
-        "git status",
-        "git branch",
-        "git diff",
-        "git checkout",
-        "git add",
-        "git commit",
-        "git push",
+        "dotnet",
+        "git",
+        "gh",
+        "ls",
+        "dir",
         "pwd",
     ];
 }

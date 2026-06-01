@@ -36,6 +36,20 @@ public sealed class CommandDenyPolicyTests
     [InlineData("gh", "secret", "delete", "MY_TOKEN")]
     [InlineData("gh", "api", "-X", "PUT", "/repos/owner/repo/branches/main/protection")]
     [InlineData("gh", "api", "/repos/owner/repo/branches/main/protection")]
+    // ── Newly-reachable verbs blocked now whole families are allowlisted ──────
+    [InlineData("gh", "repo", "delete", "owner/repo")]
+    [InlineData("gh", "repo", "delete", "owner/repo", "--yes")]
+    [InlineData("gh", "auth", "login")]
+    [InlineData("gh", "auth", "token")]
+    [InlineData("gh", "auth", "logout")]
+    [InlineData("gh", "api", "-X", "DELETE", "/repos/owner/repo")]
+    [InlineData("gh", "api", "--method", "DELETE", "/repos/owner/repo")]
+    [InlineData("gh", "api", "-X", "POST", "/repos/owner/repo/issues")]
+    [InlineData("gh", "api", "--method", "POST", "/repos/owner/repo/issues")]
+    [InlineData("gh", "api", "-X", "PUT", "/repos/owner/repo/contents/x")]
+    [InlineData("gh", "api", "--method", "PUT", "/repos/owner/repo/contents/x")]
+    [InlineData("dotnet", "tool", "install", "-g", "evil.tool")]
+    [InlineData("dotnet", "tool", "install", "--global", "evil.tool")]
     public void Default_rules_deny_known_bypass_commands(params string[] argv)
     {
         var policy = MakePolicy();
@@ -60,6 +74,11 @@ public sealed class CommandDenyPolicyTests
     [InlineData("gh", "pr", "create")]            // pr operations are not denied
     [InlineData("gh", "issue", "list")]
     [InlineData("gh", "api", "/repos/owner/repo")] // generic api call without branch-protection
+    [InlineData("gh", "api", "-X", "GET", "/repos/owner/repo")] // read-only method is fine
+    [InlineData("gh", "repo", "view", "owner/repo")]            // repo read verbs are fine
+    [InlineData("gh", "repo", "clone", "owner/repo")]
+    [InlineData("dotnet", "tool", "list")]                      // only "tool install" is denied
+    [InlineData("dotnet", "tool", "restore")]
     public void Default_rules_allow_non_matching_commands(params string[] argv)
     {
         var policy = MakePolicy();

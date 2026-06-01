@@ -85,6 +85,53 @@ public sealed class SandboxOptionsTests
             && r.ArgPatterns.Contains("set"));
     }
 
+    [Fact]
+    public void Default_DeniedCommands_includes_gh_repo_delete()
+    {
+        var opts = new SandboxOptions();
+
+        opts.DeniedCommands.Should().Contain(r =>
+            r.Program == "gh"
+            && r.ArgPatterns != null
+            && r.ArgPatterns.Contains("repo")
+            && r.ArgPatterns.Contains("delete"));
+    }
+
+    [Fact]
+    public void Default_DeniedCommands_includes_gh_auth()
+    {
+        var opts = new SandboxOptions();
+
+        opts.DeniedCommands.Should().Contain(r =>
+            r.Program == "gh"
+            && r.ArgPatterns != null
+            && r.ArgPatterns.Contains("auth"));
+    }
+
+    [Fact]
+    public void Default_DeniedCommands_includes_gh_api_mutating_method()
+    {
+        var opts = new SandboxOptions();
+
+        opts.DeniedCommands.Should().Contain(r =>
+            r.Program == "gh"
+            && r.ArgPatterns != null
+            && r.ArgPatterns.Contains("api")
+            && r.ArgPatterns.Contains("DELETE"));
+    }
+
+    [Fact]
+    public void Default_DeniedCommands_includes_dotnet_tool_install()
+    {
+        var opts = new SandboxOptions();
+
+        opts.DeniedCommands.Should().Contain(r =>
+            r.Program == "dotnet"
+            && r.ArgPatterns != null
+            && r.ArgPatterns.Contains("tool")
+            && r.ArgPatterns.Contains("install"));
+    }
+
     // ── Allowed hosts ────────────────────────────────────────────────────────
 
     [Fact]
