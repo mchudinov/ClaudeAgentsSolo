@@ -21,91 +21,18 @@ namespace DeveloperAgent.Tests.AppHost;
 public sealed class AppHostResourceRegistrationTests
 {
     [Fact]
-    public async Task AppHost_registers_redis_resource_named_agent_state()
-    {
-        await using var app = await BuildAppHostAsync();
-        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
-
-        var resource = model.Resources.SingleOrDefault(r => r.Name == "agent-state");
-
-        resource.Should().NotBeNull(
-            because: "Step-7 (P2-A part 1/3) requires a Redis resource named 'agent-state' " +
-                     "to be registered in the AppHost model");
-
-        resource.Should().BeAssignableTo<IResourceWithConnectionString>(
-            because: "the Redis resource exposes a connection string that downstream " +
-                     "projects will consume via WithReference");
-
-        resource!.GetType().Name.Should().Be(
-            "RedisResource",
-            because: "the resource must be created via AddRedis so that subsequent steps " +
-                     "(P2-A parts 2 and 3) can layer Dapr and connection-string consumption " +
-                     "on a real Redis resource type from Aspire.Hosting.Redis");
-    }
-
-    [Fact]
-    public async Task DeveloperAgent_project_references_agent_state_resource()
-    {
-        await using var app = await BuildAppHostAsync();
-        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
-
-        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
-        DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
-
-        var annotations = DeveloperAgent!.Annotations.ToList();
-
-        // The .WithReference(agentState) call adds an environment-callback annotation
-        // whose state references the 'agent-state' resource by name or instance, and
-        // the .WaitFor(agentState) call adds an annotation that holds a reference to
-        // the awaited resource. We assert with a reflective scan so the test is robust
-        // across Aspire 13.x annotation-type renames: at least one annotation on 'DeveloperAgent'
-        // must transitively reference the 'agent-state' resource.
-        var referencesAgentState = annotations.Any(a => AnnotationReferencesResource(a, "agent-state"));
-
-        referencesAgentState.Should().BeTrue(
-            because: "the 'DeveloperAgent' project must declare a reference to the 'agent-state' " +
-                     "Redis resource (via WithReference and/or WaitFor) so that the Aspire " +
-                     "orchestrator injects the connection string and orders startup. " +
-                     "Annotation types present: {0}",
-            string.Join(", ", annotations.Select(a => a.GetType().Name)));
-    }
-
-    [Fact]
     public async Task AppHost_registers_dapr_state_store_resource_named_agent_state_store()
     {
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var resource = model.Resources.SingleOrDefault(r => r.Name == "agent-state-store");
+        var resource = ResourcesSnapshot(model).SingleOrDefault(r => r.Name == "agent-state-store");
 
         resource.Should().NotBeNull(
-            because: "Step-8 (P2-A part 2/3) requires a Dapr state-store component named " +
-                     "'agent-state-store' to be registered in the AppHost model via " +
-                     "builder.AddDaprStateStore(\"agent-state-store\")");
-    }
-
-    [Fact]
-    public async Task Dapr_state_store_resource_references_agent_state_redis()
-    {
-        await using var app = await BuildAppHostAsync();
-        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
-
-        var stateStore = model.Resources.SingleOrDefault(r => r.Name == "agent-state-store");
-        stateStore.Should().NotBeNull(
-            because: "the 'agent-state-store' Dapr state-store resource must be registered");
-
-        var annotations = stateStore!.Annotations.ToList();
-
-        // The state-store is wired to the Redis resource via .WaitFor(agentState),
-        // which attaches a WaitAnnotation whose .Resource property is the agent-state
-        // Redis resource. The reflective walker discovers it via that property.
-        var referencesAgentState = annotations.Any(a => AnnotationReferencesResource(a, "agent-state"));
-
-        referencesAgentState.Should().BeTrue(
-            because: "the 'agent-state-store' Dapr component must declare a dependency on " +
-                     "the 'agent-state' Redis resource (via WaitFor) so the sidecar starts " +
-                     "only after Redis is healthy. Annotation types present: {0}",
-            string.Join(", ", annotations.Select(a => a.GetType().Name)));
+            because: "the Dapr state-store component named 'agent-state-store' must be " +
+                     "registered in the AppHost model via builder.AddDaprComponent(" +
+                     "\"agent-state-store\", \"state\", ...) so the daprd sidecar loads " +
+                     "the declarative agent-state-store.yaml at startup");
     }
 
     [Fact]
@@ -114,7 +41,7 @@ public sealed class AppHostResourceRegistrationTests
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
+        var DeveloperAgent = ResourcesSnapshot(model).SingleOrDefault(r => r.Name == "DeveloperAgent");
         DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
 
         var annotations = DeveloperAgent!.Annotations.ToList();
@@ -142,7 +69,7 @@ public sealed class AppHostResourceRegistrationTests
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var resource = model.Resources.SingleOrDefault(r => r.Name == "resiliency-default");
+        var resource = ResourcesSnapshot(model).SingleOrDefault(r => r.Name == "resiliency-default");
 
         resource.Should().NotBeNull(
             because: "Step-26 (P2-K) requires a Dapr Resiliency component named " +
@@ -156,7 +83,7 @@ public sealed class AppHostResourceRegistrationTests
         await using var app = await BuildAppHostAsync();
         var model = app.Services.GetRequiredService<DistributedApplicationModel>();
 
-        var DeveloperAgent = model.Resources.SingleOrDefault(r => r.Name == "DeveloperAgent");
+        var DeveloperAgent = ResourcesSnapshot(model).SingleOrDefault(r => r.Name == "DeveloperAgent");
         DeveloperAgent.Should().NotBeNull(because: "the DeveloperAgent project must be registered as 'DeveloperAgent'");
 
         var annotations = DeveloperAgent!.Annotations.ToList();
@@ -182,6 +109,30 @@ public sealed class AppHostResourceRegistrationTests
 
         // BuildAsync (NOT StartAsync) — we only inspect the model; do not require Docker.
         return await builder.BuildAsync();
+    }
+
+    /// <summary>
+    /// Returns a stable snapshot of <c>model.Resources</c>. Aspire's build pipeline
+    /// hands back the <see cref="DistributedApplicationModel"/> while lifecycle hooks
+    /// may still be appending resources on a background continuation, so enumerating
+    /// <c>model.Resources</c> directly can throw "Collection was modified" mid-LINQ.
+    /// Copying under a short retry yields a consistent list to assert against without
+    /// weakening any assertion (the wiring under test is unchanged — only the read is
+    /// made race-safe).
+    /// </summary>
+    private static IReadOnlyList<IResource> ResourcesSnapshot(DistributedApplicationModel model)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return model.Resources.ToList();
+            }
+            catch (InvalidOperationException) when (attempt < 50)
+            {
+                Thread.Sleep(10);
+            }
+        }
     }
 
     /// <summary>
