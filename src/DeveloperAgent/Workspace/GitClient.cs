@@ -1,3 +1,4 @@
+using System.Text;
 using DeveloperAgent.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -207,19 +208,30 @@ public sealed class GitClient : IGitClient
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    private string BuildGitCloneOrPushLine(string repoUrl, string gitVerb)
+        => BuildGitCommandLine(repoUrl, gitVerb, _secrets.GitHubToken);
+
     /// <summary>
-    /// Builds the git command line for clone or push, prepending
-    /// <c>-c http.extraheader="Authorization: Bearer {token}"</c> for HTTPS URLs.
+    /// Builds the git command line for clone or push. For HTTPS URLs with a token,
+    /// prepends <c>-c http.extraheader="Authorization: Basic {base64(x-access-token:token)}"</c>.
     /// For file-path URLs (used in tests) the header is omitted.
     /// </summary>
-    private string BuildGitCloneOrPushLine(string repoUrl, string gitVerb)
+    /// <remarks>
+    /// GitHub's git-over-HTTPS smart transport authenticates with HTTP <b>Basic</b> auth —
+    /// the token supplied as the password under the <c>x-access-token</c> username (the
+    /// scheme <c>actions/checkout</c> uses). It does <b>not</b> accept <c>Bearer</c>, which
+    /// is only valid for the REST / GraphQL API; sending <c>Bearer</c> makes GitHub answer
+    /// <c>HTTP 401 — remote: invalid credentials</c> so the clone fails with exit 128.
+    /// </remarks>
+    internal static string BuildGitCommandLine(string repoUrl, string gitVerb, string? token)
     {
         var isHttps = repoUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                    || repoUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
 
-        if (isHttps && !string.IsNullOrEmpty(_secrets.GitHubToken))
+        if (isHttps && !string.IsNullOrEmpty(token))
         {
-            var header = $"Authorization: Bearer {_secrets.GitHubToken}";
+            var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"));
+            var header = $"Authorization: Basic {basic}";
             var escapedHeader = EscapeForQuotedArg(header);
             return $"git -c http.extraheader=\"{escapedHeader}\" {gitVerb}";
         }
