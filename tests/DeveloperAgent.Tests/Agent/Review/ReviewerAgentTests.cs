@@ -81,6 +81,23 @@ public sealed class ReviewerAgentTests
         return client;
     }
 
+    /// <summary>
+    /// Chat client that records the <see cref="ChatOptions"/> it was called with into
+    /// <paramref name="observed"/>, then returns plain text to terminate the loop.
+    /// </summary>
+    private static IChatClient CapturingChatClient(Action<ChatOptions> observe)
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                observe(ci.Arg<ChatOptions>());
+                var text = new ChatMessage(ChatRole.Assistant, "Looks good.");
+                return Task.FromResult(new ChatResponse(text) { FinishReason = ChatFinishReason.Stop });
+            });
+        return client;
+    }
+
     /// <summary>Chat client that returns text only — never calls submit_review.</summary>
     private static IChatClient TextOnlyChatClient()
     {
@@ -203,6 +220,29 @@ public sealed class ReviewerAgentTests
         result.Verdict.Should().Be(ReviewVerdict.RequestChanges);
         result.UsedModel.Should().BeTrue();
         result.Summary.Should().Contain("null path");
+    }
+
+    // ── Temperature is not sent (deprecated for the model) ───────────────────
+
+    [Fact]
+    public async Task Persona_scan_does_not_set_Temperature_on_ChatOptions()
+    {
+        // Regression guard: newer Anthropic models reject the `temperature` request field
+        // ("temperature is deprecated for this model"). The reviewer's persona scan must
+        // leave ChatOptions.Temperature unset (null) so the provider omits it. A clean PR
+        // reaches the model, letting us capture the options it is invoked with.
+        var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 1, ChangedLines: 20, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+
+        ChatOptions? observed = null;
+        var reviewer = BuildReviewer(gitHub, CapturingChatClient(o => observed = o));
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        result.UsedModel.Should().BeTrue();
+        observed.Should().NotBeNull();
+        observed!.Temperature.Should().BeNull(
+            because: "the model rejects a `temperature` request field; it must not be sent");
     }
 
     // ── Fail-closed: model never submits a verdict → RequestChanges ───────────

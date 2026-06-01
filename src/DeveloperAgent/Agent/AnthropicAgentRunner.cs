@@ -102,7 +102,9 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 Instructions = _personaLoader.Persona,
                 Tools = mafTools,
                 MaxOutputTokens = MaxTokens,
-                Temperature = 0.0f,
+                // NOTE: Temperature is intentionally NOT set. Newer Anthropic models reject a
+                // `temperature` request field ("temperature is deprecated for this model" →
+                // AnthropicBadRequestException); leaving it null makes the provider omit it.
                 // Disable parallel tool calls so SandboxViolationException from the FIRST
                 // offending tool ends the run without other tools running in parallel.
                 AllowMultipleToolCalls = false,
