@@ -10,8 +10,10 @@ namespace DeveloperAgent.Workflow.Activities;
 /// updates task state to <see cref="TaskPhase.AwaitingReview"/>.
 /// The pull request was already created by the agent during <see cref="PlanActivity"/>;
 /// this activity records the PR number in task state and transitions the board column.
-/// Returns <see cref="CreatePullRequestResult"/> with the pull request number taken from
-/// <see cref="ITaskStateStore.Current"/> (set by the agent via tool calls).
+/// The (positive) PR number arrives via <see cref="CreatePullRequestActivityInput.PullRequestNumber"/>
+/// — the workflow takes it from <see cref="PlanResult.PullRequestNumber"/> — and is returned
+/// in <see cref="CreatePullRequestResult"/>. We do not read it from <see cref="ITaskStateStore.Current"/>:
+/// <see cref="PlanActivity"/> records phase/branch there but never the PR number.
 /// </summary>
 public sealed class CreatePullRequestActivity : WorkflowActivity<CreatePullRequestActivityInput, CreatePullRequestResult>
 {
@@ -35,8 +37,12 @@ public sealed class CreatePullRequestActivity : WorkflowActivity<CreatePullReque
         var ct = CancellationToken.None;
         var now = DateTimeOffset.UtcNow;
 
-        // The PR number was set in task state by the agent's tool calls during PlanActivity.
-        var prNumber = _taskStateStore.Current?.PullRequestNumber ?? 0;
+        // The PR was opened by the agent during PlanActivity; the workflow carries the
+        // resulting (guaranteed-positive) PR number in the input. We must NOT fall back to the
+        // volatile task-state cache here — PlanActivity records phase/branch but never the PR
+        // number, so reading the cache and defaulting to 0 persists an invalid PR number and
+        // trips ProgrammingTaskActor's "must be positive" guard.
+        var prNumber = input.PullRequestNumber;
 
         var current = _taskStateStore.Current;
         if (current is not null)

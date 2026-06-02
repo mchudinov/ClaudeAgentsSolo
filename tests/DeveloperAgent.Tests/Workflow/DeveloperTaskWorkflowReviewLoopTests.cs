@@ -53,6 +53,24 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         ctx.SetActivityResult(nameof(DoneActivity), (object?)null);
     }
 
+    // ── PR-number propagation (Step-33 regression) ───────────────────────────
+
+    [Fact]
+    public async Task Workflow_passes_plan_pr_number_to_CreatePullRequestActivity()
+    {
+        // The PR number is known only from PlanActivity's result; the activity must receive
+        // it via its input rather than re-reading a volatile cache that never holds it.
+        var ctx = new FakeWorkflowContext();
+        SetupHappyPathUntilReviewLoop(ctx, prNumber: 77);
+        ctx.CompleteExternalEvent("Merged", new ReviewEventPayload(77));
+
+        var workflow = new DeveloperTaskWorkflow();
+        await workflow.RunAsync(ctx, Input());
+
+        var createPrCall = ctx.ActivityCalls.First(c => c.Name == nameof(CreatePullRequestActivity));
+        ((CreatePullRequestActivityInput)createPrCall.Input!).PullRequestNumber.Should().Be(77);
+    }
+
     // ── Merged external event ────────────────────────────────────────────────
 
     [Fact]

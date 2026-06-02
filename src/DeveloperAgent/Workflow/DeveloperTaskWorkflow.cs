@@ -147,7 +147,8 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             ContentNodeId: input.ContentNodeId,
             ContentNumber: input.ContentNumber,
             Title: input.Title,
-            BranchName: acquireResult.BranchName);
+            BranchName: acquireResult.BranchName,
+            PullRequestNumber: prNumber);
 
         await context.CallActivityAsync<CreatePullRequestResult>(
             nameof(CreatePullRequestActivity), createPrInput, retryOptions);

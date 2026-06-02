@@ -105,7 +105,8 @@ public sealed record CreatePullRequestActivityInput(
     string ContentNodeId,
     int ContentNumber,
     string Title,
-    string BranchName);
+    string BranchName,
+    int PullRequestNumber);
 
 /// <summary>Input for <see cref="Activities.WaitForReviewActivity"/>.</summary>
 public sealed record WaitForReviewActivityInput(
