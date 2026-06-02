@@ -64,7 +64,7 @@ public sealed class WorkflowModelsTests
     [Fact]
     public void CreatePullRequestActivityInput_round_trips()
     {
-        var original = new CreatePullRequestActivityInput("PVTI_abc", "I_node", 42, "My Task", "agent/branch");
+        var original = new CreatePullRequestActivityInput("PVTI_abc", "I_node", 42, "My Task", "agent/branch", 99);
         RoundTrip(original).Should().Be(original);
     }
 
