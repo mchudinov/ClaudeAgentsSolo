@@ -50,8 +50,11 @@
       "Bash(dotnet add *)",
       "Bash(dotnet script *)",
       "Bash(dotnet fsi *)",
-      "Bash(grep -A 10 \"WorkflowActivity\\\\`2\\\\|Workflow\\\\`2\\\\|AddDaprWorkflow\\\\|WorkflowOptions\\\\|RegisterWorkflow\\\\|RegisterActivity\")",
-      "Bash(grep -A 20 \"RegisterActivity\\\\`\\\\`1\")"
+      "mcp__context7__query-docs",
+      "mcp__context7__resolve-library-id",
+      "Bash(graphify export *)",
+      "Bash(graphify explain *)",
+      "Skill(update-config)"
     ]
   }
 }
