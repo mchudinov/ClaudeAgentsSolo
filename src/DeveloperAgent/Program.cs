@@ -124,6 +124,15 @@ public class Program
                 .AddOptions<SandboxOptions>()
                 .Bind(builder.Configuration.GetSection("Sandbox"));
 
+            // ── HTTP resilience tunables (Step-32) ────────────────────────────────
+            // Per-attempt timeout for the named HttpClients below. The standard
+            // handler's 10s default cancels slow Anthropic streaming calls; default 30s.
+            builder.Services
+                .AddOptions<HttpResilienceOptions>()
+                .Bind(builder.Configuration.GetSection("HttpResilience"))
+                .Validate(o => o.AttemptTimeoutSeconds > 0, "HttpResilience.AttemptTimeoutSeconds must be > 0")
+                .ValidateOnStart();
+
             // ── Container isolation (Step-24, P2-I part 3/3) ──────────────────────
             // Per-shell_run isolation config. Disabled by default so the agent boots
             // without a container runtime; CommandSandbox routes shell_run through
@@ -167,20 +176,26 @@ public class Program
             // covers cross-process service-invocation and state-store calls; the policies
             // below cover the in-process transport layer to Anthropic and GitHub.
             // HostAllowlistHandler itself is DI-registered further down as a transient.
+            // The per-attempt timeout (and the dependent total/circuit-breaker windows)
+            // come from the HttpResilience section via HttpResilienceConfigurator so a
+            // slow Anthropic stream is not cancelled at the 10s standard-handler default.
+            var httpResilience = new HttpResilienceOptions();
+            builder.Configuration.GetSection("HttpResilience").Bind(httpResilience);
+
             builder.Services
                 .AddHttpClient(HttpClientNames.Anthropic)
                 .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler();
+                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
 
             builder.Services
                 .AddHttpClient(HttpClientNames.GitHubRest)
                 .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler();
+                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
 
             builder.Services
                 .AddHttpClient(HttpClientNames.GitHubGraphQL)
                 .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler();
+                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
 
             // ── GitHub service ────────────────────────────────────────────────────
             // Singletons are lazy: construction tolerates empty GitHubOptions.
