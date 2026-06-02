@@ -30,4 +30,19 @@ public sealed class WorkflowRegistrationTests
         provider.GetService<IDaprWorkflowClient>()
             .Should().NotBeNull("the host's ValidateOnBuild must be able to construct IDaprWorkflowClient");
     }
+
+    [Fact]
+    public void AddDeveloperTaskWorkflow_registers_IWorkflowInstanceInspector()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddDeveloperTaskWorkflow();
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetService<IWorkflowInstanceInspector>()
+            .Should().NotBeNull(
+                "AgentLifecycleService injects IWorkflowInstanceInspector to decide whether a " +
+                "deterministic workflow instance id is free, already active, or terminal");
+    }
 }

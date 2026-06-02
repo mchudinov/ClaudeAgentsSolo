@@ -51,6 +51,10 @@ public static class WorkflowServiceCollectionExtensions
         // registered. See the remarks above: our consumers depend on the interface.
         services.AddSingleton<IDaprWorkflowClient>(sp => sp.GetRequiredService<DaprWorkflowClient>());
 
+        // Idempotent-scheduling seam: AgentLifecycleService asks this whether a deterministic
+        // workflow instance id is free, already active, or terminal before scheduling.
+        services.AddSingleton<IWorkflowInstanceInspector, DaprWorkflowInstanceInspector>();
+
         return services;
     }
 }

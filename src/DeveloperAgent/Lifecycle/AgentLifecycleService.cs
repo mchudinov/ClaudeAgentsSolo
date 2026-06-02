@@ -23,6 +23,7 @@ public sealed class AgentLifecycleService(
     IOptions<ScopeLimitOptions> scopeLimits,
     IGitHubProjectService github,
     IDaprWorkflowClient daprWorkflowClient,
+    IWorkflowInstanceInspector workflowInspector,
     ITaskStateStore taskStateStore,
     TimeProvider timeProvider) : BackgroundService
 {
@@ -283,6 +284,33 @@ public sealed class AgentLifecycleService(
         string recoveryBranchName = "")
     {
         var instanceId = WorkflowInstanceId(item.ProjectItemId);
+
+        // Workflow instance ids are deterministic per project item, and Dapr keeps the
+        // orchestration record after a run ends (and, of course, while it is still active).
+        // Scheduling a second instance under the same id throws
+        // "failed to create orchestration instance: an active workflow with ID ... already exists".
+        // Make scheduling idempotent by inspecting the existing instance first:
+        //   • Active   — the Dapr runtime rehydrates and resumes it on restart; do not reschedule.
+        //   • Terminal — its record still occupies the id; purge it, then schedule fresh.
+        //   • NotFound — nothing in the way; schedule fresh.
+        var disposition = await workflowInspector.GetDispositionAsync(instanceId, ct);
+        if (disposition == WorkflowInstanceDisposition.Active)
+        {
+            logger.LogInformation(
+                "Workflow instance already active; skipping schedule (the Dapr runtime resumes it). " +
+                "instanceId={InstanceId} item={ItemId}",
+                instanceId, item.ProjectItemId);
+            return;
+        }
+
+        if (disposition == WorkflowInstanceDisposition.Terminal)
+        {
+            logger.LogInformation(
+                "Purging terminal workflow instance before rescheduling. instanceId={InstanceId} item={ItemId}",
+                instanceId, item.ProjectItemId);
+            await daprWorkflowClient.PurgeInstanceAsync(instanceId, ct);
+        }
+
         var input = new TaskInput(
             ProjectItemId: item.ProjectItemId,
             ContentNodeId: item.ContentNodeId,

@@ -43,19 +43,34 @@ public sealed class AgentLifecycleServiceTests
         Project = new ProjectOptions { Number = 1, Name = "TestProject", OwnerType = "Organization" }
     };
 
+    /// <summary>
+    /// An inspector that reports every instance id as <see cref="WorkflowInstanceDisposition.NotFound"/>
+    /// (the default for a fresh substitute too) — i.e. "no conflicting instance, schedule freely".
+    /// Tests exercising the skip/purge branches pass an explicitly-configured inspector instead.
+    /// </summary>
+    private static IWorkflowInstanceInspector NotFoundInspector()
+    {
+        var inspector = Substitute.For<IWorkflowInstanceInspector>();
+        inspector.GetDispositionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(WorkflowInstanceDisposition.NotFound);
+        return inspector;
+    }
+
     private AgentLifecycleService BuildService(
         IGitHubProjectService github,
         IDaprWorkflowClient daprWorkflowClient,
         ITaskStateStore stateStore,
         FakeTimeProvider timeProvider,
         ILogger<AgentLifecycleService>? logger = null,
-        GitHubOptions? gitHubOptions = null) =>
+        GitHubOptions? gitHubOptions = null,
+        IWorkflowInstanceInspector? workflowInspector = null) =>
         new(logger ?? NullLogger<AgentLifecycleService>.Instance,
             OptionsFactory.Create(Options),
             OptionsFactory.Create(gitHubOptions ?? DefaultGitHubOptions()),
             OptionsFactory.Create(ScopeLimits),
             github,
             daprWorkflowClient,
+            workflowInspector ?? NotFoundInspector(),
             stateStore,
             timeProvider);
 
@@ -89,6 +104,7 @@ public sealed class AgentLifecycleServiceTests
             OptionsFactory.Create(ScopeLimits),
             github,
             daprWorkflowClient,
+            NotFoundInspector(),
             stateStore,
             timeProvider);
 
@@ -295,6 +311,132 @@ public sealed class AgentLifecycleServiceTests
             nameof(DeveloperTaskWorkflow),
             AgentLifecycleService.WorkflowInstanceId("item-1"),
             Arg.Is<object>(o => CheckRecoveryInput(o, expectedPrNumber: 7)));
+
+        cts.Cancel();
+    }
+
+    // ── Idempotent scheduling (Step-34): existing instance under the same id ──
+
+    [Fact]
+    public async Task Schedule_skips_when_workflow_instance_already_active()
+    {
+        // Reproduces the reported crash: on restart, recovery reschedules an InReview item whose
+        // workflow instance still exists and is non-terminal. Dapr rejects a second schedule under
+        // the same deterministic id ("an active workflow with ID ... already exists"). The runtime
+        // resumes active instances on its own, so the service must skip — not reschedule, not purge.
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var daprWorkflowClient = Substitute.For<IDaprWorkflowClient>();
+        var timeProvider = new FakeTimeProvider();
+
+        var item = MakeItem("item-1", ProjectState.InReview);
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(new[] { item });
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>()).Returns((ProjectItem?)null);
+
+        var actorState = new ProgrammingTaskState(
+            ProjectItemId: "item-1",
+            AgentId: "agent-1",
+            Phase: TaskPhase.AwaitingReview,
+            BranchName: "agent/add-feature-x",
+            PullRequestNumber: 7,
+            RetryCount: 0,
+            ApprovalStatus: ApprovalStatus.WaitingForReview);
+        stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>()).Returns(actorState);
+        github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+
+        var inspector = Substitute.For<IWorkflowInstanceInspector>();
+        inspector.GetDispositionAsync(
+                AgentLifecycleService.WorkflowInstanceId("item-1"), Arg.Any<CancellationToken>())
+            .Returns(WorkflowInstanceDisposition.Active);
+
+        var service = BuildService(github, daprWorkflowClient, stateStore, timeProvider, workflowInspector: inspector);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(150);
+
+        await daprWorkflowClient.DidNotReceive().ScheduleNewWorkflowAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<object>());
+        await daprWorkflowClient.DidNotReceive().PurgeInstanceAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Schedule_purges_terminal_instance_then_reschedules()
+    {
+        // A prior run left a terminal (Completed/Failed/…) instance record occupying the
+        // deterministic id. The service must purge it, then schedule a fresh instance.
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var daprWorkflowClient = Substitute.For<IDaprWorkflowClient>();
+        var timeProvider = new FakeTimeProvider();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+
+        var readyItem = MakeItem("item-stale", ProjectState.Ready);
+        var callCount = 0;
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { callCount++; return callCount == 1 ? readyItem : (ProjectItem?)null; });
+
+        var instanceId = AgentLifecycleService.WorkflowInstanceId("item-stale");
+        var inspector = Substitute.For<IWorkflowInstanceInspector>();
+        inspector.GetDispositionAsync(instanceId, Arg.Any<CancellationToken>())
+            .Returns(WorkflowInstanceDisposition.Terminal);
+
+        var service = BuildService(github, daprWorkflowClient, stateStore, timeProvider, workflowInspector: inspector);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(50);
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(100);
+
+        await daprWorkflowClient.Received(1).PurgeInstanceAsync(instanceId, Arg.Any<CancellationToken>());
+        await daprWorkflowClient.Received(1).ScheduleNewWorkflowAsync(
+            nameof(DeveloperTaskWorkflow), instanceId, Arg.Any<object>());
+
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task Schedule_does_not_purge_when_no_existing_instance()
+    {
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        var github = Substitute.For<IGitHubProjectService>();
+        var stateStore = Substitute.For<ITaskStateStore>();
+        var daprWorkflowClient = Substitute.For<IDaprWorkflowClient>();
+        var timeProvider = new FakeTimeProvider();
+
+        github.GetInFlightItemsAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ProjectItem>());
+
+        var readyItem = MakeItem("item-fresh", ProjectState.Ready);
+        var callCount = 0;
+        github.TryGetNextReadyItemAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { callCount++; return callCount == 1 ? readyItem : (ProjectItem?)null; });
+
+        // Default NotFoundInspector → no conflicting instance.
+        var service = BuildService(github, daprWorkflowClient, stateStore, timeProvider);
+
+        using var cts = new CancellationTokenSource();
+        await service.StartAsync(cts.Token);
+        await Task.Delay(50);
+        timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(100);
+
+        await daprWorkflowClient.DidNotReceive().PurgeInstanceAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await daprWorkflowClient.Received(1).ScheduleNewWorkflowAsync(
+            nameof(DeveloperTaskWorkflow),
+            AgentLifecycleService.WorkflowInstanceId("item-fresh"),
+            Arg.Any<object>());
 
         cts.Cancel();
     }
@@ -614,6 +756,7 @@ public sealed class AgentLifecycleServiceTests
             OptionsFactory.Create(customScopeLimits),
             github,
             daprWorkflowClient,
+            NotFoundInspector(),
             stateStore,
             timeProvider);
 
