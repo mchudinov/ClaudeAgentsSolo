@@ -44,6 +44,26 @@ public sealed record ProjectItem(
     string BodyMarkdown,
     ProjectState State);
 
+/// <summary>
+/// Agent-neutral view of a GitHub Project v2 item: identical to <see cref="ProjectItem"/> except the
+/// board column is the raw status <em>name</em> (e.g. "Ready", "In Review") rather than the
+/// developer-agent <see cref="ProjectState"/> enum. This is what the generic
+/// <see cref="IGitHubProjectsClient"/> returns; the app facade maps it onto <see cref="ProjectItem"/>.
+/// </summary>
+/// <param name="ProjectItemId">GraphQL node ID of the <c>ProjectV2Item</c>.</param>
+/// <param name="ContentNodeId">Issue or PR node ID — used for comments.</param>
+/// <param name="ContentNumber">Issue or PR number in the repository (0 for draft issues).</param>
+/// <param name="Title">Issue or PR title.</param>
+/// <param name="BodyMarkdown">Issue or PR body in markdown.</param>
+/// <param name="Status">Current status-column name on the project board.</param>
+public sealed record ProjectBoardItem(
+    string ProjectItemId,
+    string ContentNodeId,
+    int ContentNumber,
+    string Title,
+    string BodyMarkdown,
+    string Status);
+
 /// <summary>Parameters for creating a pull request.</summary>
 /// <param name="HeadBranch">Source branch name (without owner prefix).</param>
 /// <param name="BaseBranch">Target branch name.</param>
