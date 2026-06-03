@@ -4,6 +4,14 @@
 **Depends on:** `01-configuration-and-process-shape.md` (needs `GitHubOptions` + `SecretsBundle`).
 **Unblocks:** `05-lifecycle-loop.md`.
 
+> **Update (Step-37):** the deterministic GitHub access described here has been extracted into the
+> standalone, agent-neutral **`ClaudeAgents.GitHub`** library. The generic, status-name-keyed client
+> is now `IGitHubProjectsClient` (in `src/ClaudeAgents.GitHub/`); the typed `IGitHubProjectService`
+> described below survives as a thin developer-agent **facade** (`src/DeveloperAgent/GitHub/`) that
+> maps `ProjectState` ↔ column names and delegates to the client. The library authenticates via an
+> `IGitHubTokenProvider` seam (not `SecretsBundle` directly) and is wired by `AddGitHubProjectServices`,
+> with the host composing egress + resilience. See CLAUDE.md › "GitHub access layer" for the current shape.
+
 ## Purpose
 
 All deterministic GitHub interactions go through one service. The lifecycle loop never touches Octokit directly — it asks `IGitHubProjectService` for the next Ready item, asks it to transition states, asks it to open a PR. Centralising this is what makes it possible to mock GitHub in tests and what makes the future MCP-based exploration path additive instead of redundant.
