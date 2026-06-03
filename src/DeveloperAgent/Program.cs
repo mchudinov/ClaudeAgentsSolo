@@ -105,6 +105,13 @@ public class Program
                 .AddOptions<GitHubOptions>()
                 .Bind(builder.Configuration.GetSection("GitHub"));
 
+            // ProjectStateNames is bound standalone from GitHub:States so the developer-agent
+            // lifecycle facade (GitHubProjectService) owns the ProjectState↔column-name mapping
+            // independently of GitHubOptions — the agent-neutral client never sees these names.
+            builder.Services
+                .AddOptions<ProjectStateNames>()
+                .Bind(builder.Configuration.GetSection("GitHub:States"));
+
             // Reviewer agent options (Step-28, P2-M).
             builder.Services
                 .AddOptions<ReviewerOptions>()
@@ -206,6 +213,9 @@ public class Program
             builder.Services.AddSingleton<IGitHubTokenProvider, SecretsBundleGitHubTokenProvider>();
             builder.Services.AddSingleton<IGraphQLTransport, OctokitGraphQLTransport>();
             builder.Services.AddSingleton<IRestTransport, OctokitRestTransport>();
+            // Agent-neutral client wraps the transports; the developer-agent facade
+            // (GitHubProjectService) wraps the client and applies the ProjectState lifecycle policy.
+            builder.Services.AddSingleton<IGitHubProjectsClient, GitHubProjectsClient>();
             builder.Services.AddSingleton<IGitHubProjectService, GitHubProjectService>();
 
             // ── Workspace / Git / Sandbox ─────────────────────────────────────

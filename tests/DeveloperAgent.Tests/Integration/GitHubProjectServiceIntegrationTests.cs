@@ -80,11 +80,8 @@ public sealed class GitHubProjectServiceIntegrationTests
         var graphQL = new OctokitGraphQLTransport(options, tokenProvider, httpClientFactory);
         var rest    = new OctokitRestTransport(options, tokenProvider, handlerFactory);
 
-        return new GitHubProjectService(
-            graphQL,
-            rest,
-            options,
-            NullLogger<GitHubProjectService>.Instance);
+        var client = new GitHubProjectsClient(graphQL, rest, options, NullLogger<GitHubProjectsClient>.Instance);
+        return new GitHubProjectService(client, Options.Create(options.Value.States));
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────
