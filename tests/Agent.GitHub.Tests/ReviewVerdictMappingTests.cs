@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Octokit;
 
-namespace ClaudeAgents.GitHub.Tests;
+namespace Agent.GitHub.Tests;
 
 /// <summary>
 /// Locks the mapping from the agent-neutral <see cref="ReviewVerdict"/> onto Octokit's review

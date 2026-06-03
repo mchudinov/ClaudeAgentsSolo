@@ -5,7 +5,7 @@ using Octokit;
 using Octokit.Internal;
 using OctokitGraphQL = Octokit.GraphQL;
 
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 // ── Transport DTOs ────────────────────────────────────────────────────────────
 // Internal because they are an implementation detail. Octokit types do not

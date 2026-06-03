@@ -1,6 +1,6 @@
 using FluentAssertions;
 
-namespace ClaudeAgents.GitHub.Tests;
+namespace Agent.GitHub.Tests;
 
 public sealed class MarkdownSectionBuilderTests
 {

@@ -1,4 +1,4 @@
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>
 /// Names of the <see cref="System.Net.Http.IHttpClientFactory"/>-managed clients the GitHub

@@ -1,4 +1,4 @@
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>
 /// Agent-neutral client for the deterministic GitHub Projects v2 + pull-request operations any

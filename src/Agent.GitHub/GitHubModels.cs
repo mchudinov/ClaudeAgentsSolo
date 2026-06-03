@@ -1,4 +1,4 @@
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>Aggregated review verdict for an open pull request.</summary>
 public enum PullRequestReviewState { Pending, ChangesRequested, Approved }

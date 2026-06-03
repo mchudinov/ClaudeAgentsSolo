@@ -42,7 +42,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ClaudeAgents.GitHub\ClaudeAgents.GitHub.csproj" />
+    <ProjectReference Include="..\Agent.GitHub\Agent.GitHub.csproj" />
     <ProjectReference Include="..\Library\Library.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>

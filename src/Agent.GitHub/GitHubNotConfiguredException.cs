@@ -1,4 +1,4 @@
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>
 /// Thrown when a GitHub call is attempted but required configuration

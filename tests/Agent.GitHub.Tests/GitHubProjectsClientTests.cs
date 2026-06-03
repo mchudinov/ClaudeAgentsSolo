@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
-namespace ClaudeAgents.GitHub.Tests;
+namespace Agent.GitHub.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="GitHubProjectsClient"/> against fake transports.

@@ -1,4 +1,4 @@
-using ClaudeAgents.GitHub;
+using Agent.GitHub;
 
 namespace DeveloperAgent.Configuration;
 

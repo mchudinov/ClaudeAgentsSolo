@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>
 /// DI registration for the agent-neutral GitHub Projects client.

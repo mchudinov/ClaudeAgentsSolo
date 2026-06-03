@@ -1,4 +1,4 @@
-namespace ClaudeAgents.GitHub;
+namespace Agent.GitHub;
 
 /// <summary>GitHub identity and project configuration consumed by the agent-neutral GitHub layer.
 /// Bound by the host from its <c>GitHub</c> configuration section. Lifecycle column-name policy
