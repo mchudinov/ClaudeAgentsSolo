@@ -37,7 +37,6 @@ public sealed class OctokitEgressWiringTests
                 DefaultBranch = "main",
             },
             Project = new ProjectOptions { Number = 1, OwnerType = "User" },
-            States = new ProjectStateNames(),
         });
 
     private static IGitHubTokenProvider TokenProvider()
@@ -59,10 +58,10 @@ public sealed class OctokitEgressWiringTests
         services.AddSingleton<IOptions<SandboxOptions>>(
             Options.Create(new SandboxOptions { AllowedHosts = allowedHosts.ToList() }));
         services.AddTransient<HostAllowlistHandler>();
-        services.AddHttpClient(HttpClientNames.GitHubRest)
+        services.AddHttpClient(GitHubHttpClients.Rest)
             .AddHttpMessageHandler<HostAllowlistHandler>()
             .AddStandardResilienceHandler();
-        services.AddHttpClient(HttpClientNames.GitHubGraphQL)
+        services.AddHttpClient(GitHubHttpClients.GraphQL)
             .AddHttpMessageHandler<HostAllowlistHandler>()
             .AddStandardResilienceHandler();
         return services.BuildServiceProvider();

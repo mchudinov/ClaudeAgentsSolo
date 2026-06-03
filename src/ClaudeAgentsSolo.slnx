@@ -1,7 +1,9 @@
 <Solution>
+  <Project Path="ClaudeAgents.GitHub/ClaudeAgents.GitHub.csproj" />
   <Project Path="Library/Library.csproj" />
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
   <Project Path="AppHost/AppHost.csproj" />
   <Project Path="ServiceDefaults/ServiceDefaults.csproj" />
+  <Project Path="../tests/ClaudeAgents.GitHub.Tests/ClaudeAgents.GitHub.Tests.csproj" />
   <Project Path="../tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
 </Solution>

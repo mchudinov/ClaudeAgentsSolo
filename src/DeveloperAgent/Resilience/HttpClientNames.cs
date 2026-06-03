@@ -27,9 +27,6 @@ internal static class HttpClientNames
     /// <summary>HttpClient used by the Anthropic .NET SDK.</summary>
     public const string Anthropic = "anthropic";
 
-    /// <summary>HttpClient used by Octokit (GitHub REST).</summary>
-    public const string GitHubRest = "github-rest";
-
-    /// <summary>HttpClient used by Octokit.GraphQL (GitHub GraphQL).</summary>
-    public const string GitHubGraphQL = "github-graphql";
+    // The GitHub REST/GraphQL client names now live in ClaudeAgents.GitHub.GitHubHttpClients,
+    // registered by AddGitHubProjectServices; the host composes egress + resilience onto them.
 }

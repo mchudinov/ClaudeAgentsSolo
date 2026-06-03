@@ -1,9 +1,8 @@
 using System.Text.Json;
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.GitHub;
+namespace ClaudeAgents.GitHub;
 
 /// <summary>
 /// Agent-neutral implementation of <see cref="IGitHubProjectsClient"/>: all deterministic GitHub

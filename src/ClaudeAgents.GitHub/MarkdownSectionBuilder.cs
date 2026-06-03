@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace DeveloperAgent.GitHub;
+namespace ClaudeAgents.GitHub;
 
 /// <summary>
 /// Agent-neutral mechanics for markdown documents built from a fixed sequence of

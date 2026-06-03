@@ -42,13 +42,6 @@ public sealed class GitHubProjectServiceIntegrationTests
             Owner = owner,
             Repository = new RepositoryOptions { Name = repoName, DefaultBranch = "main" },
             Project = new ProjectOptions { Number = projectNumber, OwnerType = "User" },
-            States = new ProjectStateNames
-            {
-                Ready      = "Ready",
-                InProgress = "In Progress",
-                InReview   = "In Review",
-                Done       = "Done",
-            }
         });
 
         var tokenProvider = new SecretsBundleGitHubTokenProvider(
@@ -67,10 +60,10 @@ public sealed class GitHubProjectServiceIntegrationTests
                 AllowedHosts = new List<string> { "api.github.com", "*.githubusercontent.com" }
             }));
         services.AddTransient<HostAllowlistHandler>();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubRest)
+        services.AddHttpClient(GitHubHttpClients.Rest)
             .AddHttpMessageHandler<HostAllowlistHandler>()
             .AddStandardResilienceHandler();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubGraphQL)
+        services.AddHttpClient(GitHubHttpClients.GraphQL)
             .AddHttpMessageHandler<HostAllowlistHandler>()
             .AddStandardResilienceHandler();
         var provider = services.BuildServiceProvider();
@@ -81,7 +74,7 @@ public sealed class GitHubProjectServiceIntegrationTests
         var rest    = new OctokitRestTransport(options, tokenProvider, handlerFactory);
 
         var client = new GitHubProjectsClient(graphQL, rest, options, NullLogger<GitHubProjectsClient>.Instance);
-        return new GitHubProjectService(client, Options.Create(options.Value.States));
+        return new GitHubProjectService(client, Options.Create(new ProjectStateNames()));
     }
 
     // ── Tests ─────────────────────────────────────────────────────────────────

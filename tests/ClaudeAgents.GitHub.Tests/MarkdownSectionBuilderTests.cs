@@ -1,7 +1,6 @@
-using DeveloperAgent.GitHub;
 using FluentAssertions;
 
-namespace DeveloperAgent.Tests.GitHub;
+namespace ClaudeAgents.GitHub.Tests;
 
 public sealed class MarkdownSectionBuilderTests
 {
