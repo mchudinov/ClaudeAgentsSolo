@@ -122,7 +122,7 @@ internal interface IRestTransport
 internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 {
     private readonly IOptions<GitHubOptions> _options;
-    private readonly SecretsBundle _secrets;
+    private readonly IGitHubTokenProvider _tokenProvider;
     private readonly IHttpClientFactory _httpClientFactory;
 
     // Lazy so construction doesn't fail on missing config at startup
@@ -131,11 +131,11 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 
     public OctokitGraphQLTransport(
         IOptions<GitHubOptions> options,
-        SecretsBundle secrets,
+        IGitHubTokenProvider tokenProvider,
         IHttpClientFactory httpClientFactory)
     {
         _options = options;
-        _secrets = secrets;
+        _tokenProvider = tokenProvider;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -154,7 +154,7 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
             var http = _httpClientFactory.CreateClient(HttpClientNames.GitHubGraphQL);
             _connection = new OctokitGraphQL.Connection(
                 new OctokitGraphQL.ProductHeaderValue("DeveloperAgent", version),
-                new OctokitGraphQL.Internal.InMemoryCredentialStore(_secrets.GitHubToken),
+                new OctokitGraphQL.Internal.InMemoryCredentialStore(_tokenProvider.GetToken()),
                 http);
             return _connection;
         }
@@ -198,7 +198,7 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 internal sealed class OctokitRestTransport : IRestTransport
 {
     private readonly IOptions<GitHubOptions> _options;
-    private readonly SecretsBundle _secrets;
+    private readonly IGitHubTokenProvider _tokenProvider;
     private readonly IHttpMessageHandlerFactory _handlerFactory;
 
     private GitHubClient? _client;
@@ -206,11 +206,11 @@ internal sealed class OctokitRestTransport : IRestTransport
 
     public OctokitRestTransport(
         IOptions<GitHubOptions> options,
-        SecretsBundle secrets,
+        IGitHubTokenProvider tokenProvider,
         IHttpMessageHandlerFactory handlerFactory)
     {
         _options = options;
-        _secrets = secrets;
+        _tokenProvider = tokenProvider;
         _handlerFactory = handlerFactory;
     }
 
@@ -235,7 +235,7 @@ internal sealed class OctokitRestTransport : IRestTransport
             var connection = new Octokit.Connection(
                 new Octokit.ProductHeaderValue("DeveloperAgent", version),
                 Octokit.GitHubClient.GitHubApiUrl,
-                new Octokit.Internal.InMemoryCredentialStore(new Octokit.Credentials(_secrets.GitHubToken)),
+                new Octokit.Internal.InMemoryCredentialStore(new Octokit.Credentials(_tokenProvider.GetToken())),
                 adapter,
                 new Octokit.Internal.SimpleJsonSerializer());
 
@@ -291,12 +291,19 @@ internal sealed class OctokitRestTransport : IRestTransport
         var review = new PullRequestReviewCreate
         {
             Body = body,
-            Event = verdict == ReviewVerdict.Approve
-                ? PullRequestReviewEvent.Approve
-                : PullRequestReviewEvent.RequestChanges,
+            Event = ToReviewEvent(verdict),
         };
         await GetClient().PullRequest.Review.Create(owner, repo, number, review).ConfigureAwait(false);
     }
+
+    /// <summary>Maps the agent-neutral <see cref="ReviewVerdict"/> onto Octokit's review event.</summary>
+    internal static PullRequestReviewEvent ToReviewEvent(ReviewVerdict verdict) => verdict switch
+    {
+        ReviewVerdict.Approve => PullRequestReviewEvent.Approve,
+        ReviewVerdict.RequestChanges => PullRequestReviewEvent.RequestChanges,
+        ReviewVerdict.Comment => PullRequestReviewEvent.Comment,
+        _ => throw new ArgumentOutOfRangeException(nameof(verdict), verdict, null),
+    };
 
     public async Task<IReadOnlyList<RestPullRequestReview>> GetPullRequestReviewsAsync(string owner, string repo, int number, CancellationToken ct)
     {

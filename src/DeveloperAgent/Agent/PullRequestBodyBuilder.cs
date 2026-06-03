@@ -1,7 +1,12 @@
-namespace DeveloperAgent.GitHub;
+using DeveloperAgent.GitHub;
+
+namespace DeveloperAgent.Agent;
 
 /// <summary>
-/// Builds the four-section pull request body required by the developer persona (§9).
+/// Builds the four-section pull request body required by the developer persona (§9). This is
+/// developer-agent policy — the canonical headers, their order, and the "Summary must not be
+/// empty / optional fields render as None" rules — layered over the agent-neutral
+/// <see cref="MarkdownSectionBuilder"/> rendering mechanics.
 /// </summary>
 public static class PullRequestBodyBuilder
 {
@@ -39,12 +44,10 @@ public static class PullRequestBodyBuilder
         static string OrNone(string value) =>
             string.IsNullOrWhiteSpace(value) ? "None" : value;
 
-        // Explicit \n so the body is byte-identical regardless of the source file's line endings.
-        // Headers come from RequiredSectionHeaders so the canonical set lives in one place.
-        return
-            $"{RequiredSectionHeaders[0]}\n{summary}\n\n" +
-            $"{RequiredSectionHeaders[1]}\n{OrNone(userVisibleBehavior)}\n\n" +
-            $"{RequiredSectionHeaders[2]}\n{OrNone(testsValidationRun)}\n\n" +
-            $"{RequiredSectionHeaders[3]}\n{OrNone(notesAssumptions)}\n";
+        // The four headers + per-field defaulting are the policy; MarkdownSectionBuilder owns the
+        // byte-identical rendering (explicit \n, blank line between sections).
+        return MarkdownSectionBuilder.Build(
+            RequiredSectionHeaders,
+            [summary, OrNone(userVisibleBehavior), OrNone(testsValidationRun), OrNone(notesAssumptions)]);
     }
 }

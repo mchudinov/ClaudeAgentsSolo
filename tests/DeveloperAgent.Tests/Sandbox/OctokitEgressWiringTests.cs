@@ -40,8 +40,12 @@ public sealed class OctokitEgressWiringTests
             States = new ProjectStateNames(),
         });
 
-    private static SecretsBundle Secrets() =>
-        new(AnthropicApiKey: string.Empty, GitHubToken: "ghp_fake_token_for_tests");
+    private static IGitHubTokenProvider TokenProvider()
+    {
+        var provider = Substitute.For<IGitHubTokenProvider>();
+        provider.GetToken().Returns("ghp_fake_token_for_tests");
+        return provider;
+    }
 
     /// <summary>
     /// Builds a minimal service provider with the same named-HttpClient wiring as
@@ -69,7 +73,7 @@ public sealed class OctokitEgressWiringTests
     {
         await using var provider = BuildProvider(new[] { "example.com" });
         var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
-        var transport = new OctokitRestTransport(GitHubOpts("https://github.com/owner/repo"), Secrets(), handlerFactory);
+        var transport = new OctokitRestTransport(GitHubOpts("https://github.com/owner/repo"), TokenProvider(), handlerFactory);
 
         var act = async () => await transport.GetPullRequestAsync("owner", "repo", 1, CancellationToken.None);
 
@@ -82,7 +86,7 @@ public sealed class OctokitEgressWiringTests
     {
         await using var provider = BuildProvider(new[] { "example.com" });
         var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
-        var transport = new OctokitGraphQLTransport(GitHubOpts("https://github.com/owner/repo"), Secrets(), httpClientFactory);
+        var transport = new OctokitGraphQLTransport(GitHubOpts("https://github.com/owner/repo"), TokenProvider(), httpClientFactory);
 
         var act = async () => await transport.RunQueryAsync("{ viewer { login } }", null, CancellationToken.None);
 

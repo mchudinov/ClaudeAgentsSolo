@@ -95,12 +95,9 @@ public sealed class ReviewerAgent : IReviewerAgent
     /// knowledge comes from <see cref="PullRequestBodyBuilder.RequiredSectionHeaders"/>.
     /// </summary>
     private static List<string> MissingSections(string body)
-    {
-        var present = body ?? string.Empty;
-        return PullRequestBodyBuilder.RequiredSectionHeaders
-            .Where(header => !present.Contains(header, StringComparison.Ordinal))
+        => MarkdownSectionBuilder
+            .FindMissingSections(body, PullRequestBodyBuilder.RequiredSectionHeaders)
             .ToList();
-    }
 
     private async Task<(ReviewVerdict Verdict, string Summary)> RunPersonaScanAsync(
         PullRequestReviewContext context, CancellationToken ct)

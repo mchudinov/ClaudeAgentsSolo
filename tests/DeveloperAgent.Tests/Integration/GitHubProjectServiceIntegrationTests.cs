@@ -51,7 +51,8 @@ public sealed class GitHubProjectServiceIntegrationTests
             }
         });
 
-        var secrets = new SecretsBundle(AnthropicApiKey: string.Empty, GitHubToken: token);
+        var tokenProvider = new SecretsBundleGitHubTokenProvider(
+            new SecretsBundle(AnthropicApiKey: string.Empty, GitHubToken: token));
 
         // Step-26 (P2-K) + Step-23 (P2-I) integration: both Octokit transports
         // now source their HttpClient / HttpMessageHandler from IHttpClientFactory +
@@ -76,8 +77,8 @@ public sealed class GitHubProjectServiceIntegrationTests
         var httpClientFactory  = provider.GetRequiredService<IHttpClientFactory>();
         var handlerFactory     = provider.GetRequiredService<IHttpMessageHandlerFactory>();
 
-        var graphQL = new OctokitGraphQLTransport(options, secrets, httpClientFactory);
-        var rest    = new OctokitRestTransport(options, secrets, handlerFactory);
+        var graphQL = new OctokitGraphQLTransport(options, tokenProvider, httpClientFactory);
+        var rest    = new OctokitRestTransport(options, tokenProvider, handlerFactory);
 
         return new GitHubProjectService(
             graphQL,

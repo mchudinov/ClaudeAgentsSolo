@@ -80,8 +80,9 @@ public sealed class ReviewerAgentIntegrationTests
         var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
 
         var secrets = new SecretsBundle(AnthropicApiKey: anthropicKey, GitHubToken: ghToken);
-        var graphQL = new OctokitGraphQLTransport(githubOptions, secrets, httpClientFactory);
-        var rest = new OctokitRestTransport(githubOptions, secrets, handlerFactory);
+        var tokenProvider = new SecretsBundleGitHubTokenProvider(secrets);
+        var graphQL = new OctokitGraphQLTransport(githubOptions, tokenProvider, httpClientFactory);
+        var rest = new OctokitRestTransport(githubOptions, tokenProvider, handlerFactory);
         var gitHub = new GitHubProjectService(graphQL, rest, githubOptions, NullLogger<GitHubProjectService>.Instance);
 
         var chatClientFactory = new AnthropicChatClientFactory(secrets, httpClientFactory);
