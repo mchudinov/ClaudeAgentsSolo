@@ -116,7 +116,6 @@ public sealed class GitHubOptionsTests
         options.Owner.Should().Be("");
         options.Repository.Should().NotBeNull();
         options.Project.Should().NotBeNull();
-        options.States.Should().NotBeNull();
         options.TokenSecretName.Should().Be("github-token");
     }
 }

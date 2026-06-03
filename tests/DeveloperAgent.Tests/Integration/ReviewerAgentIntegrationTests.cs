@@ -58,7 +58,6 @@ public sealed class ReviewerAgentIntegrationTests
             Owner = owner,
             Repository = new RepositoryOptions { Name = repoName, DefaultBranch = "main" },
             Project = new ProjectOptions { Number = 1, OwnerType = "User" },
-            States = new ProjectStateNames(),
         });
 
         // Wire the resilient named HttpClients the Octokit transports + the Anthropic chat
@@ -69,9 +68,9 @@ public sealed class ReviewerAgentIntegrationTests
             AllowedHosts = new List<string> { "api.github.com", "*.githubusercontent.com", "api.anthropic.com" }
         }));
         services.AddTransient<HostAllowlistHandler>();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubRest)
+        services.AddHttpClient(GitHubHttpClients.Rest)
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.GitHubGraphQL)
+        services.AddHttpClient(GitHubHttpClients.GraphQL)
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
         services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.Anthropic)
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
@@ -84,7 +83,7 @@ public sealed class ReviewerAgentIntegrationTests
         var graphQL = new OctokitGraphQLTransport(githubOptions, tokenProvider, httpClientFactory);
         var rest = new OctokitRestTransport(githubOptions, tokenProvider, handlerFactory);
         var client = new GitHubProjectsClient(graphQL, rest, githubOptions, NullLogger<GitHubProjectsClient>.Instance);
-        var gitHub = new GitHubProjectService(client, Options.Create(githubOptions.Value.States));
+        var gitHub = new GitHubProjectService(client, Options.Create(new ProjectStateNames()));
 
         var chatClientFactory = new AnthropicChatClientFactory(secrets, httpClientFactory);
 

@@ -1,13 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Resilience;
 using Microsoft.Extensions.Options;
 using Octokit;
 using Octokit.Internal;
 using OctokitGraphQL = Octokit.GraphQL;
 
-namespace DeveloperAgent.GitHub;
+namespace ClaudeAgents.GitHub;
 
 // ── Transport DTOs ────────────────────────────────────────────────────────────
 // Internal because they are an implementation detail. Octokit types do not
@@ -115,7 +113,7 @@ internal interface IRestTransport
 /// </summary>
 /// <remarks>
 /// The underlying <see cref="HttpClient"/> is obtained from
-/// <see cref="IHttpClientFactory"/> under the <see cref="HttpClientNames.GitHubGraphQL"/>
+/// <see cref="IHttpClientFactory"/> under the <see cref="GitHubHttpClients.GraphQL"/>
 /// name so the standard resilience pipeline (timeouts + retries with exponential
 /// back-off + circuit breaker) wired in <c>Program.cs</c> covers every GraphQL call.
 /// </remarks>
@@ -151,7 +149,7 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
             // configured client name; the pipeline (egress allowlist + standard
             // resilience) is wired in Program.cs. Octokit.GraphQL.Connection takes
             // the HttpClient directly and reuses it for every request.
-            var http = _httpClientFactory.CreateClient(HttpClientNames.GitHubGraphQL);
+            var http = _httpClientFactory.CreateClient(GitHubHttpClients.GraphQL);
             _connection = new OctokitGraphQL.Connection(
                 new OctokitGraphQL.ProductHeaderValue("DeveloperAgent", version),
                 new OctokitGraphQL.Internal.InMemoryCredentialStore(_tokenProvider.GetToken()),
@@ -187,7 +185,7 @@ internal sealed class OctokitGraphQLTransport : IGraphQLTransport
 /// </summary>
 /// <remarks>
 /// The transport is wired through <see cref="IHttpMessageHandlerFactory"/> under the
-/// <see cref="HttpClientNames.GitHubRest"/> name so the standard resilience pipeline
+/// <see cref="GitHubHttpClients.Rest"/> name so the standard resilience pipeline
 /// (timeouts + retries with exponential back-off + circuit breaker) wired in
 /// <c>Program.cs</c> applies to every REST request. Octokit's <see cref="Connection"/>
 /// does not consume a <see cref="HttpClient"/> directly — instead it accepts an
@@ -230,7 +228,7 @@ internal sealed class OctokitRestTransport : IRestTransport
             // handler so Octokit's per-request disposal doesn't tear down the pool.
             var adapter = new Octokit.Internal.HttpClientAdapter(
                 () => new NonDisposingHandlerWrapper(
-                    _handlerFactory.CreateHandler(HttpClientNames.GitHubRest)));
+                    _handlerFactory.CreateHandler(GitHubHttpClients.Rest)));
 
             var connection = new Octokit.Connection(
                 new Octokit.ProductHeaderValue("DeveloperAgent", version),

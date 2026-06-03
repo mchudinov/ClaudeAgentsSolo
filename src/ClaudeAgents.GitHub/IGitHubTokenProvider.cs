@@ -1,4 +1,4 @@
-namespace DeveloperAgent.GitHub;
+namespace ClaudeAgents.GitHub;
 
 /// <summary>
 /// Supplies the GitHub token used to authenticate the Octokit transports, decoupling the GitHub

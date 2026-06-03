@@ -194,28 +194,18 @@ public class Program
                 .AddHttpMessageHandler<HostAllowlistHandler>()
                 .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
 
-            builder.Services
-                .AddHttpClient(HttpClientNames.GitHubRest)
-                .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
-
-            builder.Services
-                .AddHttpClient(HttpClientNames.GitHubGraphQL)
-                .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
-
             // ── GitHub service ────────────────────────────────────────────────────
-            // Singletons are lazy: construction tolerates empty GitHubOptions.
-            // First use will fail fast if required config (Owner, etc.) is absent.
-            // The transports authenticate via IGitHubTokenProvider rather than the host
-            // SecretsBundle directly, so only the GitHub token (never the Anthropic key)
-            // reaches the GitHub layer.
+            // The agent-neutral GitHub Projects client, its Octokit transports, and the two named
+            // HttpClients (github-rest / github-graphql) are registered by the ClaudeAgents.GitHub
+            // library's AddGitHubProjectServices. The host supplies: (a) the GitHub token via
+            // IGitHubTokenProvider (so only the token, never the Anthropic key, reaches the GitHub
+            // layer); (b) the egress filter (HostAllowlistHandler) + standard resilience pipeline
+            // composed onto each named client through the callback; and (c) the developer-agent
+            // lifecycle facade (GitHubProjectService) that maps ProjectState ↔ board column names.
             builder.Services.AddSingleton<IGitHubTokenProvider, SecretsBundleGitHubTokenProvider>();
-            builder.Services.AddSingleton<IGraphQLTransport, OctokitGraphQLTransport>();
-            builder.Services.AddSingleton<IRestTransport, OctokitRestTransport>();
-            // Agent-neutral client wraps the transports; the developer-agent facade
-            // (GitHubProjectService) wraps the client and applies the ProjectState lifecycle policy.
-            builder.Services.AddSingleton<IGitHubProjectsClient, GitHubProjectsClient>();
+            builder.Services.AddGitHubProjectServices(http => http
+                .AddHttpMessageHandler<HostAllowlistHandler>()
+                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience)));
             builder.Services.AddSingleton<IGitHubProjectService, GitHubProjectService>();
 
             // ── Workspace / Git / Sandbox ─────────────────────────────────────

@@ -1,10 +1,10 @@
-namespace DeveloperAgent.GitHub;
+namespace ClaudeAgents.GitHub;
 
 /// <summary>
 /// Agent-neutral client for the deterministic GitHub Projects v2 + pull-request operations any
 /// board-driven agent needs. Board operations are keyed by status-column <em>name</em> (not a fixed
-/// state enum), so the four-column developer-agent lifecycle is policy that lives in the consuming
-/// app (see the <c>GitHubProjectService</c> facade), not in this client.
+/// state enum), so a fixed lifecycle (e.g. the four-column developer-agent flow) is policy that
+/// lives in the consuming app, not in this client.
 /// </summary>
 public interface IGitHubProjectsClient
 {

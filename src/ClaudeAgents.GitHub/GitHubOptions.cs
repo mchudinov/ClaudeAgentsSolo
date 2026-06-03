@@ -1,6 +1,8 @@
-namespace DeveloperAgent.Configuration;
+namespace ClaudeAgents.GitHub;
 
-/// <summary>GitHub identity and project configuration.</summary>
+/// <summary>GitHub identity and project configuration consumed by the agent-neutral GitHub layer.
+/// Bound by the host from its <c>GitHub</c> configuration section. Lifecycle column-name policy
+/// (e.g. the developer agent's <c>ProjectStateNames</c>) is deliberately NOT here — it is host policy.</summary>
 public sealed record GitHubOptions
 {
     /// <summary>GitHub organisation or user that owns the repository and project.</summary>
@@ -11,9 +13,6 @@ public sealed record GitHubOptions
 
     /// <summary>GitHub Project (v2) settings.</summary>
     public ProjectOptions Project { get; init; } = new();
-
-    /// <summary>Column/status names used in the GitHub Project board.</summary>
-    public ProjectStateNames States { get; init; } = new();
 
     /// <summary>
     /// Name of the secret holding the GitHub PAT.
@@ -46,20 +45,4 @@ public sealed record ProjectOptions
 
     /// <summary>Whether the project belongs to an Organization or a User account.</summary>
     public string OwnerType { get; init; } = "Organization";
-}
-
-/// <summary>Column/status labels used to move items through the project board.</summary>
-public sealed record ProjectStateNames
-{
-    /// <summary>Items that are ready for the agent to pick up.</summary>
-    public string Ready { get; init; } = "Ready";
-
-    /// <summary>Items currently being implemented by the agent.</summary>
-    public string InProgress { get; init; } = "In Progress";
-
-    /// <summary>Items whose PR is open and awaiting review.</summary>
-    public string InReview { get; init; } = "In Review";
-
-    /// <summary>Items whose PR has been merged.</summary>
-    public string Done { get; init; } = "Done";
 }

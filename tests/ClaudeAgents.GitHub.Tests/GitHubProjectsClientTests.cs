@@ -1,13 +1,11 @@
 using System.Text.Json;
-using DeveloperAgent.Configuration;
-using DeveloperAgent.GitHub;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
-namespace DeveloperAgent.Tests.GitHub;
+namespace ClaudeAgents.GitHub.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="GitHubProjectsClient"/> against fake transports.
@@ -35,14 +33,7 @@ public sealed class GitHubProjectsClientTests
     {
         Owner = "test-org",
         Repository = new RepositoryOptions { Name = "test-repo", DefaultBranch = "main" },
-        Project = new ProjectOptions { Number = 1, OwnerType = "Organization" },
-        States = new ProjectStateNames
-        {
-            Ready = "Ready",
-            InProgress = "In Progress",
-            InReview = "In Review",
-            Done = "Done"
-        }
+        Project = new ProjectOptions { Number = 1, OwnerType = "Organization" }
     };
 
     // Builds the JSON that FetchOptionLookupAsync parses.
