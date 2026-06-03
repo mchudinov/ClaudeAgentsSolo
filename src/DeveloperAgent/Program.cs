@@ -200,6 +200,10 @@ public class Program
             // ── GitHub service ────────────────────────────────────────────────────
             // Singletons are lazy: construction tolerates empty GitHubOptions.
             // First use will fail fast if required config (Owner, etc.) is absent.
+            // The transports authenticate via IGitHubTokenProvider rather than the host
+            // SecretsBundle directly, so only the GitHub token (never the Anthropic key)
+            // reaches the GitHub layer.
+            builder.Services.AddSingleton<IGitHubTokenProvider, SecretsBundleGitHubTokenProvider>();
             builder.Services.AddSingleton<IGraphQLTransport, OctokitGraphQLTransport>();
             builder.Services.AddSingleton<IRestTransport, OctokitRestTransport>();
             builder.Services.AddSingleton<IGitHubProjectService, GitHubProjectService>();

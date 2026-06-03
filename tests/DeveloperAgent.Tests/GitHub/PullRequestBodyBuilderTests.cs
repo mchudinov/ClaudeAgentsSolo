@@ -1,4 +1,4 @@
-using DeveloperAgent.GitHub;
+using DeveloperAgent.Agent;
 using FluentAssertions;
 
 namespace DeveloperAgent.Tests.GitHub;

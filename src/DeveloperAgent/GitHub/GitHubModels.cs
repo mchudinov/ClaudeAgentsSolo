@@ -7,11 +7,12 @@ public enum ProjectState { Ready, InProgress, InReview, Done }
 public enum PullRequestReviewState { Pending, ChangesRequested, Approved }
 
 /// <summary>
-/// The verdict the reviewer agent submits on a pull request. Two values only — the task
-/// posts Approve or RequestChanges; GitHub collapses any "reject" notion into the same
-/// REQUEST_CHANGES event, so no third value is modelled here.
+/// The verdict submitted on a pull request review, mirroring GitHub's three submittable review
+/// events: <see cref="Approve"/> (APPROVE), <see cref="RequestChanges"/> (REQUEST_CHANGES) and
+/// <see cref="Comment"/> (COMMENT). The developer-agent reviewer uses only Approve/RequestChanges
+/// as a binary gate; Comment is modelled for agents that post non-blocking review feedback.
 /// </summary>
-public enum ReviewVerdict { Approve, RequestChanges }
+public enum ReviewVerdict { Approve, RequestChanges, Comment }
 
 /// <summary>
 /// Everything the reviewer agent needs to review a pull request, fetched in one round-trip.
@@ -47,7 +48,7 @@ public sealed record ProjectItem(
 /// <param name="HeadBranch">Source branch name (without owner prefix).</param>
 /// <param name="BaseBranch">Target branch name.</param>
 /// <param name="Title">PR title, ≤ 72 chars per persona §9.</param>
-/// <param name="MarkdownBody">Already four-section-formatted body from <see cref="PullRequestBodyBuilder"/>.</param>
+/// <param name="MarkdownBody">Already-formatted markdown body supplied by the caller (e.g. the developer agent's PR template).</param>
 public sealed record CreatePullRequest(
     string HeadBranch,
     string BaseBranch,
