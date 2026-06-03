@@ -2,7 +2,7 @@ namespace DeveloperAgent.GitHub;
 
 /// <summary>
 /// The developer agent's four-state board lifecycle. This is agent policy — the agent-neutral
-/// GitHub library (ClaudeAgents.GitHub) keys board operations by status-column name and has no
+/// GitHub library (Agent.GitHub) keys board operations by status-column name and has no
 /// opinion about these states; the <see cref="GitHubProjectService"/> facade maps between them.
 /// </summary>
 public enum ProjectState { Ready, InProgress, InReview, Done }

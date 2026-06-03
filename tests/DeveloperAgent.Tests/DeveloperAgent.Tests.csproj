@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AppHost\AppHost.csproj" />
-    <ProjectReference Include="..\..\src\ClaudeAgents.GitHub\ClaudeAgents.GitHub.csproj" />
+    <ProjectReference Include="..\..\src\Agent.GitHub\Agent.GitHub.csproj" />
     <ProjectReference Include="..\..\src\DeveloperAgent\DeveloperAgent.csproj" />
   </ItemGroup>
 

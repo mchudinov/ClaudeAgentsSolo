@@ -5,8 +5,8 @@
 **Unblocks:** `05-lifecycle-loop.md`.
 
 > **Update (Step-37):** the deterministic GitHub access described here has been extracted into the
-> standalone, agent-neutral **`ClaudeAgents.GitHub`** library. The generic, status-name-keyed client
-> is now `IGitHubProjectsClient` (in `src/ClaudeAgents.GitHub/`); the typed `IGitHubProjectService`
+> standalone, agent-neutral **`Agent.GitHub`** library. The generic, status-name-keyed client
+> is now `IGitHubProjectsClient` (in `src/Agent.GitHub/`); the typed `IGitHubProjectService`
 > described below survives as a thin developer-agent **facade** (`src/DeveloperAgent/GitHub/`) that
 > maps `ProjectState` ↔ column names and delegates to the client. The library authenticates via an
 > `IGitHubTokenProvider` seam (not `SecretsBundle` directly) and is wired by `AddGitHubProjectServices`,

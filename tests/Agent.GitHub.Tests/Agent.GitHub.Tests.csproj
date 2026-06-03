@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ClaudeAgents.GitHub\ClaudeAgents.GitHub.csproj" />
+    <ProjectReference Include="..\..\src\Agent.GitHub\Agent.GitHub.csproj" />
   </ItemGroup>
 
 </Project>

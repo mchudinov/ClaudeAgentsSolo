@@ -196,7 +196,7 @@ public class Program
 
             // ── GitHub service ────────────────────────────────────────────────────
             // The agent-neutral GitHub Projects client, its Octokit transports, and the two named
-            // HttpClients (github-rest / github-graphql) are registered by the ClaudeAgents.GitHub
+            // HttpClients (github-rest / github-graphql) are registered by the Agent.GitHub
             // library's AddGitHubProjectServices. The host supplies: (a) the GitHub token via
             // IGitHubTokenProvider (so only the token, never the Anthropic key, reaches the GitHub
             // layer); (b) the egress filter (HostAllowlistHandler) + standard resilience pipeline
