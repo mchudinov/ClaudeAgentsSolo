@@ -1,4 +1,4 @@
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Persisted workflow-progress entity, one per (agent, project item) pair, stored in the
@@ -6,9 +6,9 @@ namespace DeveloperAgent.AgentMemory;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the durable counterpart to <see cref="DeveloperAgent.Agent.AgentRunState"/>
-/// (which is per-<c>RunAsync</c> ephemeral). Loaded once at the start of
-/// <see cref="DeveloperAgent.Workflow.DeveloperTaskWorkflow"/> and written between each
+/// This is the durable counterpart to the host's per-<c>RunAsync</c> ephemeral run state
+/// (<c>DeveloperAgent.Agent.AgentRunState</c>). Loaded once at the start of the host's task
+/// workflow (<c>DeveloperAgent.Workflow.DeveloperTaskWorkflow</c>) and written between each
 /// workflow activity so that a process restart can pick up where the last activity
 /// finished.
 /// </para>

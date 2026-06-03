@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Process-local <see cref="IChatHistoryStore"/> backed by a <see cref="ConcurrentDictionary{TKey,TValue}"/>.

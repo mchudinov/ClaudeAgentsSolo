@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using Dapr.Workflow;
-using DeveloperAgent.AgentMemory;
 using Microsoft.Extensions.Logging;
 
 namespace DeveloperAgent.Workflow.Activities;

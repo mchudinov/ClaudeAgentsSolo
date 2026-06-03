@@ -1,7 +1,6 @@
-using DeveloperAgent.AgentMemory;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Verifies the in-memory <see cref="IChatHistoryStore"/> implementation honours the

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral memory layer: MAF context/chat-history providers (layer 3) plus the
+         Dapr-backed durable stores for chat history, repo/task memories, and agent-session
+         progress. No Claude/Anthropic or GitHub coupling. The host wires identity (agentId,
+         repo/project item ids), the production DaprClient, and the LLM-backed
+         ISummarizer/IMemoryExtractor bodies (host-supplied seams). Abstraction packages are
+         declared explicitly because they appear in this library's public surface
+         (ChatMessage, IServiceCollection, DaprClient). -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.5.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Dapr.Client" Version="1.17.9" />
+  </ItemGroup>
+
+</Project>

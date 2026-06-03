@@ -43,6 +43,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Agent.GitHub\Agent.GitHub.csproj" />
+    <ProjectReference Include="..\Agent.Memory\Agent.Memory.csproj" />
     <ProjectReference Include="..\Library\Library.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>

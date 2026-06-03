@@ -1,4 +1,4 @@
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Production <see cref="IAgentMemoryStore"/> backed by the Dapr state store named

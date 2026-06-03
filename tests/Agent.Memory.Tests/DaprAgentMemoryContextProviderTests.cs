@@ -1,8 +1,7 @@
-using DeveloperAgent.AgentMemory;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Behavioural tests for <see cref="DaprAgentMemoryContextProvider"/> (LLD memory layer 3).

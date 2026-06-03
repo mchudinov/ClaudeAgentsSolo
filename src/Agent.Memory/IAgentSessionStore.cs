@@ -1,4 +1,4 @@
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Persists <see cref="AgentSession"/> records by (agent, project item) pair.

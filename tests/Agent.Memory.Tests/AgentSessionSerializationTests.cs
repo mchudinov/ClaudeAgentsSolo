@@ -1,7 +1,6 @@
 using System.Text.Json;
-using DeveloperAgent.AgentMemory;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Verifies the persisted <see cref="AgentSession"/> record round-trips through

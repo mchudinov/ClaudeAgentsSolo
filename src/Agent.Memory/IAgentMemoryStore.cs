@@ -1,4 +1,4 @@
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Persists the two long-lived memory namespaces consumed by

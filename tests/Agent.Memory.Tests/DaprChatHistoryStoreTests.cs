@@ -1,7 +1,6 @@
-using DeveloperAgent.AgentMemory;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="DaprChatHistoryStore"/> via the

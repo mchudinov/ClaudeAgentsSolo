@@ -1,6 +1,6 @@
 using Dapr.Client;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Production <see cref="IDaprStateClient"/> implementation. Thin pass-through to

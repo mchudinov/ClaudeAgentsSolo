@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Persists the windowed/compacted <see cref="ChatMessage"/> list backing a single

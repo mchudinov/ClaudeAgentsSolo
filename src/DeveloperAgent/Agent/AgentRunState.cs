@@ -14,7 +14,7 @@ namespace DeveloperAgent.Agent;
 /// </para>
 /// <para>
 /// NOTE: This class is the per-run ephemeral counters object. The persisted workflow-progress
-/// entity is <see cref="DeveloperAgent.AgentMemory.AgentSession"/> — different concept,
+/// entity is <see cref="Agent.Memory.AgentSession"/> — different concept,
 /// different lifecycle.
 /// </para>
 /// </summary>

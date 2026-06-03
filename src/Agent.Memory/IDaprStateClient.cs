@@ -1,4 +1,4 @@
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Thin seam over the three Dapr state-store operations that
