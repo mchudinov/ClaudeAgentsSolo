@@ -25,6 +25,16 @@ builder.AddProject<Projects.DeveloperAgent>("DeveloperAgent")
         .WithReference(stateStore)
         .WithReference(resiliency));
 
+builder.AddContainer("redisinsight", "redis/redisinsight")
+    .WithImageTag("latest")
+    .WithHttpEndpoint(port: 5540, targetPort: 5540, name: "http")
+    .WithEnvironment("RI_REDIS_HOST", "host.docker.internal")
+    .WithEnvironment("RI_REDIS_PORT", "6379")
+    .WithEnvironment("RI_REDIS_USERNAME", "")
+    .WithEnvironment("RI_REDIS_PASSWORD", "")
+    .WithEnvironment("RI_REDIS_ALIAS", "Local Redis")
+    .WithEnvironment("RI_ACCEPT_TERMS_AND_CONDITIONS", "true");        
+
 builder.Build().Run();
 
 // Resolves the absolute path to a file under DeveloperAgent's dapr-components
