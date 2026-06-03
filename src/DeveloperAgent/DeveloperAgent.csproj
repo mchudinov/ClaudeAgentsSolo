@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Dapr.Workflow" Version="1.17.9" />
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.6.2" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.8.0" />
     <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.1.0-rc1" />
     <!--
       Pin the Anthropic provider (transitively required by Microsoft.Agents.AI.Anthropic,
@@ -32,7 +32,7 @@
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.8" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
-    <PackageReference Include="MudBlazor" Version="9.4.0" />
+    <PackageReference Include="MudBlazor" Version="9.5.0" />
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
