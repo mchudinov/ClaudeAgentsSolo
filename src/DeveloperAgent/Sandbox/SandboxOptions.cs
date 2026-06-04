@@ -27,12 +27,12 @@ public sealed record SandboxOptions
     /// normalised absolute path.</item>
     /// </list>
     /// </summary>
-    public IReadOnlyList<string> DenyPathPatterns { get; init; } =
-    [
-        "~/.ssh/**",
-        ".env*",
-        ".git/config",
-    ];
+    /// <remarks>
+    /// Defined in <c>appsettings.json</c> (<c>Sandbox:DenyPathPatterns</c>) — the single
+    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
+    /// startup so the file sandbox is never silently unguarded.
+    /// </remarks>
+    public IReadOnlyList<string> DenyPathPatterns { get; init; } = [];
 
     /// <summary>
     /// Additional regex patterns. A path whose normalised absolute form
@@ -47,46 +47,23 @@ public sealed record SandboxOptions
     /// rejected even when it would otherwise be allowed.
     /// </summary>
     /// <remarks>
-    /// The defaults cover the well-known sandbox-bypass commands from
-    /// the LLD: arbitrary network egress (<c>curl</c>, <c>wget</c>),
-    /// privilege escalation (<c>chmod +x</c>), force-push and rewrites
-    /// of remote state (<c>git push --force</c> / <c>-f</c>), and secret
-    /// / branch-protection mutation through the <c>gh</c> CLI.
+    /// Defined in <c>appsettings.json</c> (<c>Sandbox:DeniedCommands</c>) — the single
+    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
+    /// startup so the command sandbox is never silently unguarded.
     /// <para>
     /// Because <see cref="Configuration.WorkspaceOptions.AllowedCommands"/> allows the
-    /// whole <c>dotnet</c> / <c>git</c> / <c>gh</c> families, the deny list also blocks
-    /// the dangerous verbs that breadth makes reachable: destructive repo / auth
-    /// operations (<c>gh repo delete</c>, <c>gh auth …</c>), mutating raw API calls
+    /// whole <c>dotnet</c> / <c>git</c> / <c>gh</c> families, the shipped rules block the
+    /// well-known sandbox-bypass commands that breadth makes reachable: arbitrary network
+    /// egress (<c>curl</c>, <c>wget</c>), privilege escalation (<c>chmod +x</c>), force-push
+    /// and remote-state rewrites (<c>git push --force</c> / <c>-f</c>), secret / branch-protection
+    /// mutation and destructive repo / auth operations through the <c>gh</c> CLI
+    /// (<c>gh secret …</c>, <c>gh repo delete</c>, <c>gh auth …</c>), mutating raw API calls
     /// (<c>gh api -X/--method DELETE|PUT|POST</c>), and arbitrary tool acquisition
     /// (<c>dotnet tool install</c>). NOTE: <c>gh api</c> with <c>PATCH</c>/<c>HEAD</c>
-    /// and <c>dotnet tool update</c> are NOT yet denied — add rules here if needed.
+    /// and <c>dotnet tool update</c> are NOT yet denied — add rules in <c>appsettings.json</c> if needed.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<CommandDenyRule> DeniedCommands { get; init; } =
-    [
-        new CommandDenyRule(Name: "no-curl",            Program: "curl"),
-        new CommandDenyRule(Name: "no-wget",            Program: "wget"),
-        new CommandDenyRule(Name: "no-chmod-exec",      Program: "chmod", ArgPatterns: ["+x"]),
-        new CommandDenyRule(Name: "no-git-force-push",  Program: "git",   ArgPatterns: ["push", "--force"]),
-        new CommandDenyRule(Name: "no-git-force-push-short", Program: "git", ArgPatterns: ["push", "-f"]),
-        new CommandDenyRule(Name: "no-git-force-with-lease", Program: "git", ArgPatterns: ["push", "--force-with-lease"]),
-        new CommandDenyRule(Name: "no-gh-secret-set",   Program: "gh",    ArgPatterns: ["secret", "set"]),
-        new CommandDenyRule(Name: "no-gh-secret-remove",Program: "gh",    ArgPatterns: ["secret", "remove"]),
-        new CommandDenyRule(Name: "no-gh-secret-delete",Program: "gh",    ArgPatterns: ["secret", "delete"]),
-        new CommandDenyRule(Name: "no-gh-branch-protection", Program: "gh", ArgPatterns: ["api"], ArgContains: ["protection"]),
-        // Destructive / credential gh verbs now reachable via the broad "gh" allowlist.
-        new CommandDenyRule(Name: "no-gh-repo-delete",  Program: "gh",    ArgPatterns: ["repo", "delete"]),
-        new CommandDenyRule(Name: "no-gh-auth",         Program: "gh",    ArgPatterns: ["auth"]),
-        // Mutating raw API calls — both the short (-X) and long (--method) flag forms.
-        new CommandDenyRule(Name: "no-gh-api-delete-x",      Program: "gh", ArgPatterns: ["api", "-X", "DELETE"]),
-        new CommandDenyRule(Name: "no-gh-api-delete-method", Program: "gh", ArgPatterns: ["api", "--method", "DELETE"]),
-        new CommandDenyRule(Name: "no-gh-api-put-x",         Program: "gh", ArgPatterns: ["api", "-X", "PUT"]),
-        new CommandDenyRule(Name: "no-gh-api-put-method",    Program: "gh", ArgPatterns: ["api", "--method", "PUT"]),
-        new CommandDenyRule(Name: "no-gh-api-post-x",        Program: "gh", ArgPatterns: ["api", "-X", "POST"]),
-        new CommandDenyRule(Name: "no-gh-api-post-method",   Program: "gh", ArgPatterns: ["api", "--method", "POST"]),
-        // Arbitrary tool acquisition via the broad "dotnet" allowlist.
-        new CommandDenyRule(Name: "no-dotnet-tool-install",  Program: "dotnet", ArgPatterns: ["tool", "install"]),
-    ];
+    public IReadOnlyList<CommandDenyRule> DeniedCommands { get; init; } = [];
 
     /// <summary>
     /// Host patterns the <see cref="HostAllowlistHandler"/> permits for
@@ -97,16 +74,14 @@ public sealed record SandboxOptions
     /// <c>raw.githubusercontent.com</c> but not <c>githubusercontent.com</c>.</item>
     /// <item>An exact host string matches only that host.</item>
     /// </list>
-    /// Defaults cover the three production providers: Anthropic (model API),
-    /// GitHub (REST/GraphQL + raw content), and Context7 (MCP documentation).
     /// </summary>
-    public IReadOnlyList<string> AllowedHosts { get; init; } =
-    [
-        "api.anthropic.com",
-        "api.github.com",
-        "*.githubusercontent.com",
-        "context7.com",
-    ];
+    /// <remarks>
+    /// Defined in <c>appsettings.json</c> (<c>Sandbox:AllowedHosts</c>) — the single
+    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
+    /// startup. The shipped hosts cover the three production providers: Anthropic (model
+    /// API), GitHub (REST/GraphQL + raw content), and Context7 (MCP documentation).
+    /// </remarks>
+    public IReadOnlyList<string> AllowedHosts { get; init; } = [];
 }
 
 /// <summary>

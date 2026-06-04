@@ -34,14 +34,12 @@ public sealed record WorkspaceOptions
     /// change the agent's working directory. Callers set the working directory via the
     /// <c>workingDirectory</c> argument instead.
     /// </para>
+    /// <para>
+    /// Defined in <c>appsettings.json</c> (<c>Workspace:AllowedCommands</c>) — the single
+    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
+    /// startup. The shipped list is <c>dotnet</c> / <c>git</c> / <c>gh</c> plus the
+    /// read-only commands <c>ls</c> / <c>dir</c> / <c>pwd</c> / <c>cat</c>.
+    /// </para>
     /// </summary>
-    public IReadOnlyList<string> AllowedCommands { get; init; } =
-    [
-        "dotnet",
-        "git",
-        "gh",
-        "ls",
-        "dir",
-        "pwd",
-    ];
+    public IReadOnlyList<string> AllowedCommands { get; init; } = [];
 }

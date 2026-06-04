@@ -1,5 +1,6 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Sandbox;
+using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
             RootPath = workspaceRoot,
-            AllowedCommands = new WorkspaceOptions().AllowedCommands,
+            AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
         var githubOpts = Options.Create(new GitHubOptions());
         var scopeOpts = Options.Create(scopeLimits ?? new ScopeLimitOptions());

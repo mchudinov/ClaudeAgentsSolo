@@ -17,7 +17,7 @@ public sealed class PathDenyPolicyTests
         IReadOnlyList<string>? secretRegexes = null) =>
         new PathDenyPolicy(Options.Create(new SandboxOptions
         {
-            DenyPathPatterns = denyPatterns ?? new SandboxOptions().DenyPathPatterns,
+            DenyPathPatterns = denyPatterns ?? ProductionSandboxConfig.DenyPathPatterns,
             SecretFileRegexes = secretRegexes ?? [],
         }));
 

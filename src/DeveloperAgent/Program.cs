@@ -126,9 +126,16 @@ public class Program
                 .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
                 .ValidateOnStart();
 
+            // The deny/allow lists live solely in appsettings.json (Step-41 — the records
+            // carry no in-code defaults), so require the security-critical lists to be
+            // present: an empty list would silently run the sandbox unguarded.
             builder.Services
                 .AddOptions<SandboxOptions>()
-                .Bind(builder.Configuration.GetSection("Sandbox"));
+                .Bind(builder.Configuration.GetSection("Sandbox"))
+                .Validate(o => o.DeniedCommands.Count > 0, "Sandbox.DeniedCommands must not be empty")
+                .Validate(o => o.DenyPathPatterns.Count > 0, "Sandbox.DenyPathPatterns must not be empty")
+                .Validate(o => o.AllowedHosts.Count > 0, "Sandbox.AllowedHosts must not be empty")
+                .ValidateOnStart();
 
             // ── HTTP resilience tunables (Step-32) ────────────────────────────────
             // Per-attempt timeout for the named HttpClients below. The standard

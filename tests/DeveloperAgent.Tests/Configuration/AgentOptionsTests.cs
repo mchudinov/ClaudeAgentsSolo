@@ -1,4 +1,5 @@
 using DeveloperAgent.Configuration;
+using DeveloperAgent.Tests.Sandbox;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
@@ -164,7 +165,9 @@ public sealed class WorkspaceOptionsTests
     {
         var options = new WorkspaceOptions();
         options.RootPath.Should().Be(Path.Combine(Path.GetTempPath(), "developer-agent", "workspace"));
-        options.AllowedCommands.Should().NotBeEmpty();
+        // Step-41: the allow-list now lives solely in appsettings.json, so the record's
+        // default is empty (the binder would otherwise append config onto it and duplicate).
+        options.AllowedCommands.Should().BeEmpty();
     }
 
     [Fact]
@@ -194,8 +197,9 @@ public sealed class WorkspaceOptionsTests
         // by the command deny policy, which runs BEFORE the allowlist (deny wins).
         // "cd" is intentionally absent: there is no real shell, so a "cd" segment would
         // run as a direct exec and cannot change the agent's working directory.
-        var options = new WorkspaceOptions();
-        options.AllowedCommands.Should().BeEquivalentTo(new[]
+        // Step-41: sourced from the bound appsettings.json (the single source) — the record
+        // default is empty. The shipped list adds the read-only "cat" to the families below.
+        ProductionSandboxConfig.AllowedCommands.Should().BeEquivalentTo(new[]
         {
             "dotnet",
             "git",
@@ -203,6 +207,7 @@ public sealed class WorkspaceOptionsTests
             "ls",
             "dir",
             "pwd",
+            "cat",
         }, o => o.WithStrictOrdering());
     }
 }

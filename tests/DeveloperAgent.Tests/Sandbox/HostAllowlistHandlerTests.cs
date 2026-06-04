@@ -159,7 +159,7 @@ public sealed class HostAllowlistHandlerTests
     public async Task Constructor_bound_to_SandboxOptions_default_allows_anthropic()
     {
         var stub = new StubHandler();
-        var handler = new HostAllowlistHandler(Options.Create(new SandboxOptions()));
+        var handler = new HostAllowlistHandler(Options.Create(ProductionSandboxConfig.Sandbox));
         using var client = BuildClient(handler, stub);
 
         var response = await client.GetAsync("https://api.anthropic.com/");
@@ -171,7 +171,7 @@ public sealed class HostAllowlistHandlerTests
     public async Task Constructor_bound_to_SandboxOptions_default_allows_github_api()
     {
         var stub = new StubHandler();
-        var handler = new HostAllowlistHandler(Options.Create(new SandboxOptions()));
+        var handler = new HostAllowlistHandler(Options.Create(ProductionSandboxConfig.Sandbox));
         using var client = BuildClient(handler, stub);
 
         var response = await client.GetAsync("https://api.github.com/");
@@ -183,7 +183,7 @@ public sealed class HostAllowlistHandlerTests
     public async Task Constructor_bound_to_SandboxOptions_default_allows_context7()
     {
         var stub = new StubHandler();
-        var handler = new HostAllowlistHandler(Options.Create(new SandboxOptions()));
+        var handler = new HostAllowlistHandler(Options.Create(ProductionSandboxConfig.Sandbox));
         using var client = BuildClient(handler, stub);
 
         var response = await client.GetAsync("https://context7.com/");
@@ -195,7 +195,7 @@ public sealed class HostAllowlistHandlerTests
     public async Task Constructor_bound_to_SandboxOptions_default_allows_raw_githubusercontent()
     {
         var stub = new StubHandler();
-        var handler = new HostAllowlistHandler(Options.Create(new SandboxOptions()));
+        var handler = new HostAllowlistHandler(Options.Create(ProductionSandboxConfig.Sandbox));
         using var client = BuildClient(handler, stub);
 
         var response = await client.GetAsync("https://raw.githubusercontent.com/o/r/main/f");
