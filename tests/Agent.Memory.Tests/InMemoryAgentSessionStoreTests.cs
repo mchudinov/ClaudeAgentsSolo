@@ -1,6 +1,5 @@
-using DeveloperAgent.AgentMemory;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Verifies the in-memory <see cref="IAgentSessionStore"/> implementation honours the

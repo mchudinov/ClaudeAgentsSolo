@@ -2,7 +2,6 @@ using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
-using DeveloperAgent.AgentMemory;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
@@ -281,25 +280,17 @@ public class Program
             builder.Services.AddSingleton<ITaskExecutor, TaskExecutor>();
             builder.Services.AddHostedService<AgentLifecycleService>();
 
-            // ── Step-18: AgentSession persistence (P2-G part 1/3) ─────────────────
-            // DaprClient is constructed once via DaprClientBuilder (Dapr.Client 1.17.9).
-            // DaprAgentSessionStore wraps it via the IDaprStateClient seam so it stays
-            // unit-testable. AgentId = Environment.MachineName matches the
-            // DaprActorTaskStateStore registration above.
+            // ── Agent.Memory stores (Steps 18 / 25; extracted to Agent.Memory in Step-40) ─
+            // DaprClient is constructed once via DaprClientBuilder (Dapr.Client 1.17.9); the
+            // host owns it (AddAgentMemoryServices' DaprClientStateAdapter depends on it, the
+            // same way AddGitHubProjectServices depends on a host-supplied IGitHubTokenProvider).
+            // AddAgentMemoryServices then registers the IDaprStateClient adapter plus the
+            // IAgentSessionStore (agent-session:{id}) and IAgentMemoryStore (repo-state / task-memory)
+            // singletons. AgentId = Environment.MachineName matches the DaprActorTaskStateStore
+            // registration above. The MAF providers and the ISummarizer/IMemoryExtractor seams are
+            // constructed per run, not via DI.
             builder.Services.AddSingleton<DaprClient>(_ => new DaprClientBuilder().Build());
-            builder.Services.AddSingleton<IDaprStateClient, DaprClientStateAdapter>();
-            builder.Services.AddSingleton<IAgentSessionStore>(sp => new DaprAgentSessionStore(
-                sp.GetRequiredService<IDaprStateClient>(),
-                DaprAgentSessionStore.StateStoreName,
-                Environment.MachineName));
-
-            // ── Step-25: task-memory store (P2-J) ─────────────────────────────────
-            // CompactMemoryActivity persists the post-Done summary under
-            // task-memory:{projectItemId} via this store; DaprAgentMemoryContextProvider
-            // (Step-20) reads the same namespace on a future run.
-            builder.Services.AddSingleton<IAgentMemoryStore>(sp => new DaprAgentMemoryStore(
-                sp.GetRequiredService<IDaprStateClient>(),
-                DaprAgentMemoryStore.StateStoreName));
+            builder.Services.AddAgentMemoryServices(Environment.MachineName);
 
             // ── Dapr Actors ───────────────────────────────────────────────────────
             // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the

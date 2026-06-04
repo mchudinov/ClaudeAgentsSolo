@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Process-local <see cref="IAgentMemoryStore"/> backed by <see cref="ConcurrentDictionary{TKey,TValue}"/>s.

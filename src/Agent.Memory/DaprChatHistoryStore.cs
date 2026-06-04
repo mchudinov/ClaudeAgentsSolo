@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Production <see cref="IChatHistoryStore"/> backed by the Dapr state store named

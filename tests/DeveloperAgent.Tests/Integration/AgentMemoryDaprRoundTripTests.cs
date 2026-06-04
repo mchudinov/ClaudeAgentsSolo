@@ -1,5 +1,4 @@
 using Dapr.Client;
-using DeveloperAgent.AgentMemory;
 using Xunit;
 
 namespace DeveloperAgent.Tests.Integration;

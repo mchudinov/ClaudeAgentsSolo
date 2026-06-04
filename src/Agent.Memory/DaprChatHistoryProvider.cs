@@ -1,7 +1,7 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Microsoft Agent Framework <see cref="ChatHistoryProvider"/> backed by an

@@ -1,5 +1,4 @@
 using DeveloperAgent.Agent;
-using DeveloperAgent.AgentMemory;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;

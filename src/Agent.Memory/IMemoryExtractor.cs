@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// New durable memories distilled from a single completed agent run, split into the two

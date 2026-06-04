@@ -1,6 +1,5 @@
-using DeveloperAgent.AgentMemory;
 
-namespace DeveloperAgent.Tests.AgentMemory;
+namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="DaprAgentSessionStore"/> via the

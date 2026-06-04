@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.AgentMemory;
+namespace Agent.Memory;
 
 /// <summary>
 /// Compacts a list of overflow chat messages into a single textual summary.
