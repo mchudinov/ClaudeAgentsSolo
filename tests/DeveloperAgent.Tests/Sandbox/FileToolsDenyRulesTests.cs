@@ -32,12 +32,12 @@ public sealed class FileToolsDenyRulesTests : IDisposable
     }
 
     private static IPathDenyPolicy DefaultPolicy() =>
-        new PathDenyPolicy(Options.Create(new SandboxOptions()));
+        new PathDenyPolicy(Options.Create(ProductionSandboxConfig.Sandbox));
 
     private static IPathDenyPolicy PolicyWithRegex(string regex) =>
         new PathDenyPolicy(Options.Create(new SandboxOptions
         {
-            DenyPathPatterns = new SandboxOptions().DenyPathPatterns,
+            DenyPathPatterns = ProductionSandboxConfig.DenyPathPatterns,
             SecretFileRegexes = [regex],
         }));
 

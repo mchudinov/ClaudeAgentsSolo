@@ -13,7 +13,7 @@ public sealed class CommandDenyPolicyTests
     private static ICommandDenyPolicy MakePolicy(IReadOnlyList<CommandDenyRule>? rules = null) =>
         new CommandDenyPolicy(Options.Create(new SandboxOptions
         {
-            DeniedCommands = rules ?? new SandboxOptions().DeniedCommands,
+            DeniedCommands = rules ?? ProductionSandboxConfig.DeniedCommands,
         }));
 
     private static IReadOnlyList<string> Argv(params string[] tokens) => tokens;

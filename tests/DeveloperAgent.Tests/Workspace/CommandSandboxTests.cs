@@ -1,5 +1,6 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Sandbox;
+using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -30,7 +31,7 @@ public sealed class CommandSandboxTests
         var opts = Options.Create(new WorkspaceOptions
         {
             RootPath = RootPath,
-            AllowedCommands = allowedCommands ?? new WorkspaceOptions().AllowedCommands,
+            AllowedCommands = allowedCommands ?? ProductionSandboxConfig.AllowedCommands,
         });
         var sandboxOpts = Options.Create(new SandboxOptions
         {
@@ -40,7 +41,7 @@ public sealed class CommandSandboxTests
             SecretFileRegexes = [],
             // Default to the production deny rules so the negative tests
             // (git push --force etc.) trigger via the policy.
-            DeniedCommands = deniedCommands ?? new SandboxOptions().DeniedCommands,
+            DeniedCommands = deniedCommands ?? ProductionSandboxConfig.DeniedCommands,
         });
         var denyPolicy = new PathDenyPolicy(sandboxOpts);
         var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);

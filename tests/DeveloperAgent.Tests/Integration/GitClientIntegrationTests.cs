@@ -1,5 +1,6 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Sandbox;
+using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,7 +28,7 @@ public sealed class GitClientIntegrationTests
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
             RootPath = workspaceRoot,
-            AllowedCommands = new WorkspaceOptions().AllowedCommands,
+            AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
         var githubOpts = Options.Create(new GitHubOptions());
         var secrets = new SecretsBundle("", "");

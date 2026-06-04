@@ -8,6 +8,7 @@ using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Sandbox;
+using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -94,7 +95,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
             RootPath = workspaceRoot,
-            AllowedCommands = new WorkspaceOptions().AllowedCommands,
+            AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
         var agentOpts = Options.Create(new AgentOptions
         {

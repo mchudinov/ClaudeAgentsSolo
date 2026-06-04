@@ -2,13 +2,18 @@ using DeveloperAgent.Sandbox;
 
 namespace DeveloperAgent.Tests.Sandbox;
 
-/// <summary>Tests for <see cref="SandboxOptions"/> defaults and shape.</summary>
+/// <summary>
+/// Tests that the production <c>appsettings.json</c> (the single source after Step-41)
+/// defines the expected sandbox rules and shape. These read the bound configuration via
+/// <see cref="ProductionSandboxConfig"/> rather than <c>new SandboxOptions()</c>, whose
+/// lists are now empty by design.
+/// </summary>
 public sealed class SandboxOptionsTests
 {
     [Fact]
     public void Default_DenyPathPatterns_contains_ssh_glob()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DenyPathPatterns.Should().Contain("~/.ssh/**");
     }
@@ -16,7 +21,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DenyPathPatterns_contains_dotenv_glob()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DenyPathPatterns.Should().Contain(".env*");
     }
@@ -24,7 +29,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DenyPathPatterns_contains_git_config()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DenyPathPatterns.Should().Contain(".git/config");
     }
@@ -32,7 +37,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_SecretFileRegexes_is_empty()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.SecretFileRegexes.Should().BeEmpty();
     }
@@ -42,7 +47,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_curl()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r => r.Program == "curl");
     }
@@ -50,7 +55,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_wget()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r => r.Program == "wget");
     }
@@ -58,7 +63,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_chmod_plus_x()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "chmod" && r.ArgPatterns != null && r.ArgPatterns.Contains("+x"));
@@ -67,7 +72,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_git_push_force()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "git" && r.ArgPatterns != null && r.ArgPatterns.Contains("--force"));
@@ -76,7 +81,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_gh_secret_set()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "gh"
@@ -88,7 +93,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_gh_repo_delete()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "gh"
@@ -100,7 +105,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_gh_auth()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "gh"
@@ -111,7 +116,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_gh_api_mutating_method()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "gh"
@@ -123,7 +128,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_DeniedCommands_includes_dotnet_tool_install()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.DeniedCommands.Should().Contain(r =>
             r.Program == "dotnet"
@@ -137,7 +142,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_AllowedHosts_includes_api_anthropic_com()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.AllowedHosts.Should().Contain("api.anthropic.com");
     }
@@ -145,7 +150,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_AllowedHosts_includes_api_github_com()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.AllowedHosts.Should().Contain("api.github.com");
     }
@@ -153,7 +158,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_AllowedHosts_includes_wildcard_githubusercontent()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.AllowedHosts.Should().Contain("*.githubusercontent.com");
     }
@@ -161,7 +166,7 @@ public sealed class SandboxOptionsTests
     [Fact]
     public void Default_AllowedHosts_includes_context7()
     {
-        var opts = new SandboxOptions();
+        var opts = ProductionSandboxConfig.Sandbox;
 
         opts.AllowedHosts.Should().Contain("context7.com");
     }
