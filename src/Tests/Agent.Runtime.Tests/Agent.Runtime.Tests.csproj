@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.Runtime\Agent.Runtime.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Runtime\Agent.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

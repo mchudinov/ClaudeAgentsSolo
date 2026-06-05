@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.Memory\Agent.Memory.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Memory\Agent.Memory.csproj" />
   </ItemGroup>
 
 </Project>

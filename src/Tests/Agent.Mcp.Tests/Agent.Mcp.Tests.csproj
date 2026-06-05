@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.Mcp\Agent.Mcp.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Mcp\Agent.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

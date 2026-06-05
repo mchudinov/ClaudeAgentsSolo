@@ -26,9 +26,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\AgenticTools\Agent.GitHub\Agent.GitHub.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Memory\Agent.Memory.csproj" />
     <ProjectReference Include="..\..\AppHost\AppHost.csproj" />
-    <ProjectReference Include="..\..\Agent.GitHub\Agent.GitHub.csproj" />
-    <ProjectReference Include="..\..\Agent.Memory\Agent.Memory.csproj" />
     <ProjectReference Include="..\..\DeveloperAgent\DeveloperAgent.csproj" />
   </ItemGroup>
 

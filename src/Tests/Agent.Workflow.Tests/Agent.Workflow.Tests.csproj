@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.Workflow\Agent.Workflow.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Workflow\Agent.Workflow.csproj" />
   </ItemGroup>
 
 </Project>

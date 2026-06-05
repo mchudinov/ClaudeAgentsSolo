@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.Sandbox\Agent.Sandbox.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.Sandbox\Agent.Sandbox.csproj" />
   </ItemGroup>
 
 </Project>

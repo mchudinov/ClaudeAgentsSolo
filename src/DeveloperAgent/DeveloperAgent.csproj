@@ -42,14 +42,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Agent.GitHub\Agent.GitHub.csproj" />
-    <ProjectReference Include="..\Agent.Mcp\Agent.Mcp.csproj" />
-    <ProjectReference Include="..\Agent.Memory\Agent.Memory.csproj" />
-    <ProjectReference Include="..\Agent.Runtime\Agent.Runtime.csproj" />
-    <ProjectReference Include="..\Agent.Sandbox\Agent.Sandbox.csproj" />
-    <ProjectReference Include="..\Agent.Tools\Agent.Tools.csproj" />
-    <ProjectReference Include="..\Agent.Workflow\Agent.Workflow.csproj" />
-    <ProjectReference Include="..\Agent.Workspace\Agent.Workspace.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.GitHub\Agent.GitHub.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Mcp\Agent.Mcp.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Memory\Agent.Memory.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Runtime\Agent.Runtime.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Sandbox\Agent.Sandbox.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Tools\Agent.Tools.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Workflow\Agent.Workflow.csproj" />
+    <ProjectReference Include="..\AgenticTools\Agent.Workspace\Agent.Workspace.csproj" />
     <ProjectReference Include="..\Library\Library.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>

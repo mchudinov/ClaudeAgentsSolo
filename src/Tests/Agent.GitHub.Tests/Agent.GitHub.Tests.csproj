@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Agent.GitHub\Agent.GitHub.csproj" />
+    <ProjectReference Include="..\..\AgenticTools\Agent.GitHub\Agent.GitHub.csproj" />
   </ItemGroup>
 
 </Project>
