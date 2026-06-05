@@ -11,13 +11,13 @@
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
   <Project Path="AppHost/AppHost.csproj" />
   <Project Path="ServiceDefaults/ServiceDefaults.csproj" />
-  <Project Path="../tests/Agent.GitHub.Tests/Agent.GitHub.Tests.csproj" />
-  <Project Path="../tests/Agent.Mcp.Tests/Agent.Mcp.Tests.csproj" />
-  <Project Path="../tests/Agent.Memory.Tests/Agent.Memory.Tests.csproj" />
-  <Project Path="../tests/Agent.Runtime.Tests/Agent.Runtime.Tests.csproj" />
-  <Project Path="../tests/Agent.Sandbox.Tests/Agent.Sandbox.Tests.csproj" />
-  <Project Path="../tests/Agent.Tools.Tests/Agent.Tools.Tests.csproj" />
-  <Project Path="../tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
-  <Project Path="../tests/Agent.Workspace.Tests/Agent.Workspace.Tests.csproj" />
-  <Project Path="../tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
+  <Project Path="Tests/Agent.GitHub.Tests/Agent.GitHub.Tests.csproj" />
+  <Project Path="Tests/Agent.Mcp.Tests/Agent.Mcp.Tests.csproj" />
+  <Project Path="Tests/Agent.Memory.Tests/Agent.Memory.Tests.csproj" />
+  <Project Path="Tests/Agent.Runtime.Tests/Agent.Runtime.Tests.csproj" />
+  <Project Path="Tests/Agent.Sandbox.Tests/Agent.Sandbox.Tests.csproj" />
+  <Project Path="Tests/Agent.Tools.Tests/Agent.Tools.Tests.csproj" />
+  <Project Path="Tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
+  <Project Path="Tests/Agent.Workspace.Tests/Agent.Workspace.Tests.csproj" />
+  <Project Path="Tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
 </Solution>

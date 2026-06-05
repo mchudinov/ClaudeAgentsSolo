@@ -29,8 +29,8 @@
     <!-- The library under test. Agent.Sandbox is referenced directly too: the tests use its
          currency types (TaskWorkspace, CommandResult, ICommandSandbox) which Agent.Workspace's
          public surface is typed on. -->
-    <ProjectReference Include="..\..\src\Agent.Workspace\Agent.Workspace.csproj" />
-    <ProjectReference Include="..\..\src\Agent.Sandbox\Agent.Sandbox.csproj" />
+    <ProjectReference Include="..\..\Agent.Workspace\Agent.Workspace.csproj" />
+    <ProjectReference Include="..\..\Agent.Sandbox\Agent.Sandbox.csproj" />
   </ItemGroup>
 
 </Project>

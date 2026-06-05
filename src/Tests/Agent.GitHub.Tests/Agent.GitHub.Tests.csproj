@@ -17,17 +17,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
-    <!-- ServiceCollection/BuildServiceProvider for AddSandboxServices resolution test; AddLogging for it;
-         Configuration + Json for ProductionSandboxConfig binding the live appsettings.json. The Options /
-         Logging.Abstractions / Http packages flow in transitively from the Agent.Sandbox reference. -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
+    <PackageReference Include="Octokit" Version="14.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Agent.Sandbox\Agent.Sandbox.csproj" />
+    <ProjectReference Include="..\..\Agent.GitHub\Agent.GitHub.csproj" />
   </ItemGroup>
 
 </Project>
