@@ -2,6 +2,7 @@ using Bunit;
 using DeveloperAgent.Components.Dashboard;
 using DeveloperAgent.Dashboard;
 using DeveloperAgent.Lifecycle;
+using Library.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using Serilog.Events;

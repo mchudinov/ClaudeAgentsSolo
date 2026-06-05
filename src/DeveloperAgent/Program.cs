@@ -11,6 +11,7 @@ using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
 using Dapr.Client;
 using Dapr.Workflow;
+using Library.Logging;
 using Library.Secrets;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;

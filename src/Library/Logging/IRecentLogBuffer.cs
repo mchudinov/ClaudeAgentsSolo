@@ -1,7 +1,7 @@
-namespace DeveloperAgent.Dashboard;
+namespace Library.Logging;
 
 /// <summary>
-/// Read side of the in-memory recent-log ring buffer the operator dashboard renders.
+/// Read side of the in-memory recent-log ring buffer an operator dashboard renders.
 /// The concrete <see cref="RecentLogBuffer"/> also implements Serilog's
 /// <c>ILogEventSink</c>; the same instance is registered for both roles so the
 /// dashboard observes the events the application actually logged.
