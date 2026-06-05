@@ -282,6 +282,32 @@ public sealed class AnthropicAgentRunnerTests
             Arg.Any<CancellationToken>());
     }
 
+    // ── Test: non-sandbox tool exception is NOT latched as a sandbox violation ──
+
+    [Fact]
+    public async Task NonSandbox_tool_exception_surfaces_ApiError_not_SandboxViolation()
+    {
+        // Guards the Step-48 onToolThrew discrimination: the host callback latches ONLY
+        // SandboxViolationException. A different tool exception must fall through to ApiError,
+        // never be mislabeled SandboxViolation.
+        var faultyTool = new FakeTool
+        {
+            Name = "read_file",
+            Handler = (_, _, _) => throw new InvalidOperationException("tool blew up"),
+        };
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(FunctionCallResponse("read_file")));
+
+        var runner = BuildRunner(chatClient, [faultyTool]);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.ApiError);
+        result.Outcome.Should().NotBe(AgentRunOutcome.SandboxViolation);
+    }
+
     // ── Test: cancellation ────────────────────────────────────────────────────
 
     [Fact]
