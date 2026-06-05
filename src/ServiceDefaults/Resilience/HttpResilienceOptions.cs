@@ -1,10 +1,9 @@
-namespace DeveloperAgent.Resilience;
+namespace ServiceDefaults.Resilience;
 
 /// <summary>
-/// Tunables for the in-process HTTP resilience pipeline applied to every named
-/// HttpClient (see <see cref="HttpClientNames"/>) via
-/// <c>AddStandardResilienceHandler()</c>. Bound from the <c>HttpResilience</c>
-/// section of <c>appsettings.json</c>.
+/// Tunables for the in-process HTTP resilience pipeline applied to a named
+/// HttpClient via <c>AddStandardResilienceHandler()</c>. Bound from the
+/// <c>HttpResilience</c> section of <c>appsettings.json</c>.
 /// </summary>
 /// <remarks>
 /// Only the per-attempt timeout is exposed today. The standard handler's shipped

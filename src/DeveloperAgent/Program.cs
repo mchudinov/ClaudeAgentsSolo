@@ -17,6 +17,7 @@ using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
 using DeveloperAgent.Workspace;
 using Library;
+using ServiceDefaults.Resilience;
 using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry.Metrics;
 using Serilog;

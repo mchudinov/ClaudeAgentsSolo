@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Http.Resilience;
 
-namespace DeveloperAgent.Resilience;
+namespace ServiceDefaults.Resilience;
 
 /// <summary>
 /// Translates <see cref="HttpResilienceOptions"/> into a
