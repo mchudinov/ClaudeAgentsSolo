@@ -15,8 +15,10 @@
          Anthropic is pinned to 12.24.1 (>= 12.18.0): older builds were compiled against
          Microsoft.Extensions.AI.Abstractions 10.4.0 where WebSearchToolResultContent exposed
          `Results`; 10.5.x renamed it to `Outputs`, so older Anthropic throws MissingMethodException
-         against the 10.5.x the rest of the graph forces. Do not lower this floor. -->
-    <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.1.0-rc1" />
+         against the 10.5.x the rest of the graph forces. Do not lower this floor. The Anthropic
+         package also supplies the `AsIChatClient` extension (AnthropicClientExtensions.AsIChatClient)
+         the factory uses — this library produces a raw IChatClient, so it does NOT reference
+         Microsoft.Agents.AI.Anthropic (that MAF agent-abstraction layer lives in the host). -->
     <PackageReference Include="Anthropic" Version="12.24.1" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.5.2" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />

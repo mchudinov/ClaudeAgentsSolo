@@ -4,9 +4,9 @@ using Microsoft.Extensions.AI;
 namespace Agent.Runtime;
 
 /// <summary>
-/// Production <see cref="IAgentChatClientFactory"/> backed by the official Anthropic .NET SDK
-/// (the <c>Anthropic</c> NuGet package), exposed as an <see cref="IChatClient"/> via
-/// <c>Microsoft.Agents.AI.Anthropic</c>'s <c>AnthropicClientExtensions.AsIChatClient</c>.
+/// Production <see cref="IAgentChatClientFactory"/> backed by the <c>Anthropic</c> NuGet package,
+/// exposed as an <see cref="IChatClient"/> via that package's <c>AnthropicClientExtensions.AsIChatClient</c>
+/// extension. (MAF agent-abstraction wrapping lives in the host; this library returns a raw chat client.)
 /// </summary>
 /// <remarks>
 /// The underlying <see cref="HttpClient"/> is obtained from <see cref="IHttpClientFactory"/>
