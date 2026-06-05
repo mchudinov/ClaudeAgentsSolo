@@ -1,10 +1,11 @@
-namespace DeveloperAgent.Configuration;
+namespace Agent.Workspace;
 
 /// <summary>
 /// The workspace-manager half of the workspace configuration: the on-disk root under which
 /// per-task workspace directories are laid out. Carved out of the sandbox's
 /// <see cref="global::Agent.Sandbox.WorkspaceOptions"/> in Step-50 so the git/workspace layer
-/// depends only on the root path, not on the sandbox-only <c>AllowedCommands</c> allowlist.
+/// depends only on the root path, not on the sandbox-only <c>AllowedCommands</c> allowlist; moved
+/// into this library with the workspace manager in Step-51.
 /// <para>
 /// <see cref="RootPath"/> is shared with <see cref="global::Agent.Sandbox.WorkspaceOptions.RootPath"/>:
 /// both records bind from the one <c>Workspace</c> configuration section and resolve to the same

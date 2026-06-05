@@ -2,7 +2,7 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Observability;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -16,6 +16,7 @@ namespace DeveloperAgent.Lifecycle;
 public sealed class TaskExecutor(
     ILogger<TaskExecutor> logger,
     IOptions<AgentOptions> agentOptions,
+    IOptions<GitHubOptions> githubOptions,
     IGitHubProjectService github,
     IWorkspaceManager workspaceManager,
     IGitClient gitClient,
@@ -59,7 +60,8 @@ public sealed class TaskExecutor(
             item.ProjectItemId, item.ContentNumber, item.Title, TaskPhase.Acquired);
 
         // ── 2. WORKSPACE ──────────────────────────────────────────────────────
-        var ws = await workspaceManager.PrepareAsync(item.ProjectItemId, branchName, ct);
+        var ws = await workspaceManager.PrepareAsync(
+            item.ProjectItemId, branchName, githubOptions.Value.Repository.Url, ct);
         await gitClient.CheckoutNewBranchAsync(ws, ct);
 
         state = state with
@@ -339,7 +341,9 @@ public sealed class TaskExecutor(
                     "Changes requested on resumed review; re-running agent. {ItemId} Round={Round}",
                     item.ProjectItemId, round);
 
-                var ws = await workspaceManager.PrepareAsync(item.ProjectItemId, BranchName.ForTask(null, item.Title), ct);
+                var ws = await workspaceManager.PrepareAsync(
+                    item.ProjectItemId, BranchName.ForTask(null, item.Title),
+                    githubOptions.Value.Repository.Url, ct);
                 await gitClient.CheckoutNewBranchAsync(ws, ct);
 
                 lastResult = await agentRunner.RunAsync(

@@ -1,9 +1,10 @@
-namespace DeveloperAgent.Workspace;
+using Agent.Sandbox;
+
+namespace Agent.Workspace;
 
 /// <summary>
 /// Creates and destroys per-task workspace directories.
-/// Each task receives an isolated directory under
-/// <see cref="DeveloperAgent.Configuration.WorkspaceRootOptions.RootPath"/>.
+/// Each task receives an isolated directory under <see cref="WorkspaceRootOptions.RootPath"/>.
 /// </summary>
 public interface IWorkspaceManager
 {
@@ -12,7 +13,7 @@ public interface IWorkspaceManager
     /// <list type="number">
     ///   <item>Wipes any pre-existing directory for <paramref name="projectItemId"/>.</item>
     ///   <item>Creates <c>{RootPath}/{projectItemId}/repo</c> and <c>.../logs</c>.</item>
-    ///   <item>Clones the configured repository.</item>
+    ///   <item>Clones <paramref name="repoUrl"/>.</item>
     ///   <item>Resolves the default branch from <c>refs/remotes/origin/HEAD</c>.</item>
     /// </list>
     /// </summary>
@@ -22,9 +23,13 @@ public interface IWorkspaceManager
     /// Stored on the returned <see cref="TaskWorkspace"/> so callers can run
     /// <see cref="IGitClient.CheckoutNewBranchAsync"/> after this method returns.
     /// </param>
+    /// <param name="repoUrl">
+    /// HTTPS (or file-system) clone URL of the repository. Supplied by the host as data so the
+    /// workspace layer carries no dependency on the host's GitHub identity options.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A fully initialised <see cref="TaskWorkspace"/>.</returns>
-    Task<TaskWorkspace> PrepareAsync(string projectItemId, string branchName, CancellationToken ct);
+    Task<TaskWorkspace> PrepareAsync(string projectItemId, string branchName, string repoUrl, CancellationToken ct);
 
     /// <summary>
     /// Wipes the workspace directory for the given workspace.

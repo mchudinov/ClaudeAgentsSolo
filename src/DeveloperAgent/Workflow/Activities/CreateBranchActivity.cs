@@ -1,7 +1,8 @@
+using Agent.Workspace;
 using Dapr.Workflow;
 using DeveloperAgent.Lifecycle;
-using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Workflow.Activities;
 
@@ -16,17 +17,20 @@ public sealed class CreateBranchActivity : WorkflowActivity<CreateBranchActivity
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IGitClient _gitClient;
     private readonly ITaskStateStore _taskStateStore;
+    private readonly IOptions<GitHubOptions> _githubOptions;
 
     public CreateBranchActivity(
         ILogger<CreateBranchActivity> logger,
         IWorkspaceManager workspaceManager,
         IGitClient gitClient,
-        ITaskStateStore taskStateStore)
+        ITaskStateStore taskStateStore,
+        IOptions<GitHubOptions> githubOptions)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;
         _gitClient = gitClient;
         _taskStateStore = taskStateStore;
+        _githubOptions = githubOptions;
     }
 
     public override async Task<CreateBranchResult> RunAsync(
@@ -34,7 +38,8 @@ public sealed class CreateBranchActivity : WorkflowActivity<CreateBranchActivity
     {
         var ct = CancellationToken.None;
 
-        var ws = await _workspaceManager.PrepareAsync(input.ProjectItemId, input.BranchName, ct);
+        var ws = await _workspaceManager.PrepareAsync(
+            input.ProjectItemId, input.BranchName, _githubOptions.Value.Repository.Url, ct);
         await _gitClient.CheckoutNewBranchAsync(ws, ct);
 
         var current = _taskStateStore.Current;

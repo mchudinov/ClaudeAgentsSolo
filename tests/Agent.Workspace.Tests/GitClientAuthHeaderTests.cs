@@ -1,8 +1,8 @@
 using System.Text;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using FluentAssertions;
 
-namespace DeveloperAgent.Tests.Workspace;
+namespace Agent.Workspace.Tests;
 
 /// <summary>
 /// Guards the HTTP authentication scheme <see cref="GitClient"/> injects into git

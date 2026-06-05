@@ -1,7 +1,7 @@
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using FluentAssertions;
 
-namespace DeveloperAgent.Tests.Workspace;
+namespace Agent.Workspace.Tests;
 
 public sealed class BranchNameTests
 {

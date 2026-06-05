@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral clone/branch/commit/push + diff-scope governance: IGitClient/GitClient,
+         IWorkspaceManager/WorkspaceManager, BranchName, ScopeLimitExceededException, DiffStats,
+         DiffScopeLimitOptions, WorkspaceRootOptions, and the IGitTokenProvider host seam. git runs
+         as a sandbox subprocess (no HttpClient), so no Microsoft.Extensions.Http here. These packages
+         cover Options binding, ILogger, and the AddWorkspaceGitServices DI registration extension. -->
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- GitClient shells every git verb through ICommandSandbox.RunAsync and parses CommandResult;
+         IGitClient/IWorkspaceManager are typed on TaskWorkspace. All three are owned by Agent.Sandbox
+         (the shared currency records, per the Tools -> Sandbox -> Workspace acyclic DAG). The workspace
+         layer references Sandbox for them; it carries NO dependency on Agent.GitHub (and thus no Octokit)
+         — the GitHub token arrives via the IGitTokenProvider seam and repoUrl as a method parameter. -->
+    <ProjectReference Include="..\Agent.Sandbox\Agent.Sandbox.csproj" />
+  </ItemGroup>
+
+</Project>

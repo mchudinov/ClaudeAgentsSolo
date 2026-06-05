@@ -4,7 +4,7 @@ using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Observability;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DeveloperAgent.Tests.Workflow;

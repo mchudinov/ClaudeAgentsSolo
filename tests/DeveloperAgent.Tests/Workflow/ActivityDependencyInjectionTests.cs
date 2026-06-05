@@ -2,10 +2,11 @@ using Dapr.Workflow;
 using DeveloperAgent.Agent;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
+using Agent.Workspace;
 using DeveloperAgent.Observability;
-using DeveloperAgent.Workspace;
 using DeveloperAgent.Workflow.Activities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Tests.Workflow;
 
@@ -36,6 +37,7 @@ public sealed class ActivityDependencyInjectionTests
         typeof(ILogger<SaveAgentSessionActivity>),
         typeof(ILogger<DeleteAgentSessionActivity>),
         typeof(IGitHubProjectService),
+        typeof(IOptions<GitHubOptions>),
         typeof(IWorkspaceManager),
         typeof(IGitClient),
         typeof(IAgentRunner),

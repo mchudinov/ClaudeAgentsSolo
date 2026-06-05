@@ -1,11 +1,11 @@
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Workspace;
+using Agent.Sandbox;
+using Agent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
-namespace DeveloperAgent.Tests.Workspace;
+namespace Agent.Workspace.Tests;
 
 /// <summary>
 /// Tests for <see cref="WorkspaceManager"/>.
@@ -14,6 +14,8 @@ namespace DeveloperAgent.Tests.Workspace;
 /// </summary>
 public sealed class WorkspaceManagerTests : IDisposable
 {
+    private const string DefaultRepoUrl = "https://github.com/test/repo";
+
     private readonly string _rootPath;
     private readonly IGitClient _git;
 
@@ -36,21 +38,15 @@ public sealed class WorkspaceManagerTests : IDisposable
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private WorkspaceManager BuildManager(
-        string? repoUrl = null,
-        string? defaultBranch = null)
+    private WorkspaceManager BuildManager(string? defaultBranch = null)
     {
         // Configure git client stub
         _git.ResolveDefaultBranchAsync(Arg.Any<TaskWorkspace>(), Arg.Any<CancellationToken>())
             .Returns(defaultBranch ?? "main");
 
         var workspaceOpts = Options.Create(new WorkspaceRootOptions { RootPath = _rootPath });
-        var githubOpts = Options.Create(new GitHubOptions
-        {
-            Repository = new RepositoryOptions { Url = repoUrl ?? "https://github.com/test/repo" },
-        });
         var logger = Substitute.For<ILogger<WorkspaceManager>>();
-        return new WorkspaceManager(_git, workspaceOpts, githubOpts, logger);
+        return new WorkspaceManager(_git, workspaceOpts, logger);
     }
 
     // ── Directory structure ──────────────────────────────────────────────────
@@ -61,7 +57,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         var manager = BuildManager();
         const string itemId = "item-abc";
 
-        await manager.PrepareAsync(itemId, "agent/test", CancellationToken.None);
+        await manager.PrepareAsync(itemId, "agent/test", DefaultRepoUrl, CancellationToken.None);
 
         var repoDir = Path.Combine(_rootPath, itemId, "repo");
         var logsDir = Path.Combine(_rootPath, itemId, "logs");
@@ -82,7 +78,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         var existingFile = Path.Combine(existingDir, "stale.txt");
         await File.WriteAllTextAsync(existingFile, "old content");
 
-        await manager.PrepareAsync(itemId, "agent/test", CancellationToken.None);
+        await manager.PrepareAsync(itemId, "agent/test", DefaultRepoUrl, CancellationToken.None);
 
         // The stale file should be gone
         File.Exists(existingFile).Should().BeFalse("workspace should have been wiped");
@@ -91,12 +87,12 @@ public sealed class WorkspaceManagerTests : IDisposable
     // ── Git client delegation ────────────────────────────────────────────────
 
     [Fact]
-    public async Task PrepareAsync_invokes_GitClient_CloneAsync_with_configured_repo_url()
+    public async Task PrepareAsync_invokes_GitClient_CloneAsync_with_the_supplied_repo_url()
     {
         const string repoUrl = "https://github.com/myorg/myrepo";
-        var manager = BuildManager(repoUrl: repoUrl);
+        var manager = BuildManager();
 
-        await manager.PrepareAsync("item-clone", "agent/test", CancellationToken.None);
+        await manager.PrepareAsync("item-clone", "agent/test", repoUrl, CancellationToken.None);
 
         await _git.Received(1).CloneAsync(
             Arg.Any<TaskWorkspace>(),
@@ -110,7 +106,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         const string expectedBranch = "main";
         var manager = BuildManager(defaultBranch: expectedBranch);
 
-        var ws = await manager.PrepareAsync("item-branch", "agent/test", CancellationToken.None);
+        var ws = await manager.PrepareAsync("item-branch", "agent/test", DefaultRepoUrl, CancellationToken.None);
 
         await _git.Received(1).ResolveDefaultBranchAsync(
             Arg.Any<TaskWorkspace>(),
@@ -126,7 +122,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         const string itemId = "item-fields";
         const string branchName = "agent/my-branch";
 
-        var ws = await manager.PrepareAsync(itemId, branchName, CancellationToken.None);
+        var ws = await manager.PrepareAsync(itemId, branchName, DefaultRepoUrl, CancellationToken.None);
 
         ws.ProjectItemId.Should().Be(itemId);
         ws.BranchName.Should().Be(branchName);
@@ -142,7 +138,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         var manager = BuildManager();
         const string itemId = "item-release";
 
-        var ws = await manager.PrepareAsync(itemId, "agent/test", CancellationToken.None);
+        var ws = await manager.PrepareAsync(itemId, "agent/test", DefaultRepoUrl, CancellationToken.None);
 
         var dir = Path.Combine(_rootPath, itemId);
         Directory.Exists(dir).Should().BeTrue("workspace should exist before release");

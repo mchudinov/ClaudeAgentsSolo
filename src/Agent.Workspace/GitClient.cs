@@ -1,9 +1,9 @@
 using System.Text;
-using DeveloperAgent.Configuration;
+using Agent.Sandbox;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Workspace;
+namespace Agent.Workspace;
 
 /// <summary>
 /// Shells out to the <c>git</c> CLI via <see cref="ICommandSandbox"/> to perform
@@ -15,23 +15,20 @@ public sealed class GitClient : IGitClient
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ICommandSandbox _sandbox;
-    private readonly IOptions<GitHubOptions> _githubOptions;
     private readonly DiffScopeLimitOptions _scopeLimits;
-    private readonly SecretsBundle _secrets;
+    private readonly IGitTokenProvider _tokenProvider;
     private readonly ILogger<GitClient> _logger;
 
     /// <summary>Initialises a new <see cref="GitClient"/>.</summary>
     public GitClient(
         ICommandSandbox sandbox,
-        IOptions<GitHubOptions> githubOptions,
         IOptions<DiffScopeLimitOptions> scopeLimits,
-        SecretsBundle secrets,
+        IGitTokenProvider tokenProvider,
         ILogger<GitClient> logger)
     {
         _sandbox = sandbox;
-        _githubOptions = githubOptions;
         _scopeLimits = scopeLimits.Value;
-        _secrets = secrets;
+        _tokenProvider = tokenProvider;
         _logger = logger;
     }
 
@@ -101,7 +98,7 @@ public sealed class GitClient : IGitClient
     }
 
     /// <inheritdoc />
-    public async Task PushAsync(TaskWorkspace ws, CancellationToken ct)
+    public async Task PushAsync(TaskWorkspace ws, string repoUrl, CancellationToken ct)
     {
         // Defence-in-depth: refuse to push the default branch
         var headResult = await _sandbox.RunAsync(
@@ -135,7 +132,6 @@ public sealed class GitClient : IGitClient
                 ScopeLimit.MaxChangedLines, stats.ChangedLines, _scopeLimits.MaxChangedLines);
         }
 
-        var repoUrl = _githubOptions.Value.Repository.Url;
         var commandLine = BuildGitCloneOrPushLine(
             repoUrl,
             $"push --set-upstream origin {ws.BranchName}");
@@ -206,7 +202,7 @@ public sealed class GitClient : IGitClient
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private string BuildGitCloneOrPushLine(string repoUrl, string gitVerb)
-        => BuildGitCommandLine(repoUrl, gitVerb, _secrets.GitHubToken);
+        => BuildGitCommandLine(repoUrl, gitVerb, _tokenProvider.GetToken());
 
     /// <summary>
     /// Builds the git command line for clone or push. For HTTPS URLs with a token,

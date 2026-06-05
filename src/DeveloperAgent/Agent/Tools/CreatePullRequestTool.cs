@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Agent.Tools;

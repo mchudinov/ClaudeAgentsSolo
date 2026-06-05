@@ -12,7 +12,7 @@ using Library.Logging;
 using Library.Secrets;
 using DeveloperAgent.Workflow;
 using DeveloperAgent.Workflow.Activities;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Library;
 using ServiceDefaults.Resilience;
 using Microsoft.Extensions.Http.Resilience;
@@ -247,8 +247,15 @@ public class Program
             // and GitHub named clients via the AddAgentRuntimeServices/AddGitHubProjectServices
             // callbacks above (the sandbox owns no named HttpClient).
             builder.Services.AddSandboxServices();
-            builder.Services.AddSingleton<IGitClient, GitClient>();
-            builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
+
+            // The agent-neutral git client + workspace manager (IGitClient/GitClient,
+            // IWorkspaceManager/WorkspaceManager) are registered by the Agent.Workspace library's
+            // AddWorkspaceGitServices (Step-51). The host supplies the GitHub token via
+            // IGitTokenProvider (a SecretsBundle adapter, mirroring IGitHubTokenProvider) so the
+            // workspace layer carries no Agent.GitHub/Octokit dependency; repoUrl flows as data —
+            // read from GitHubOptions by the lifecycle callers and passed to Prepare/Push.
+            builder.Services.AddSingleton<IGitTokenProvider, SecretsBundleGitTokenProvider>();
+            builder.Services.AddWorkspaceGitServices();
 
             // ── Agent ─────────────────────────────────────────────────────────────
             // PersonaLoader throws at construction if the persona file is missing or empty.

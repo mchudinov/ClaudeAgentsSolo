@@ -49,6 +49,7 @@
     <ProjectReference Include="..\Agent.Sandbox\Agent.Sandbox.csproj" />
     <ProjectReference Include="..\Agent.Tools\Agent.Tools.csproj" />
     <ProjectReference Include="..\Agent.Workflow\Agent.Workflow.csproj" />
+    <ProjectReference Include="..\Agent.Workspace\Agent.Workspace.csproj" />
     <ProjectReference Include="..\Library\Library.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>

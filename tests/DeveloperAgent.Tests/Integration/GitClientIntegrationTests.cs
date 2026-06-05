@@ -1,6 +1,5 @@
-using DeveloperAgent.Configuration;
+using Agent.Workspace;
 using DeveloperAgent.Tests.Sandbox;
-using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,8 +29,6 @@ public sealed class GitClientIntegrationTests
             RootPath = workspaceRoot,
             AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
-        var githubOpts = Options.Create(new GitHubOptions());
-        var secrets = new SecretsBundle("", "");
         var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
@@ -55,9 +52,10 @@ public sealed class GitClientIntegrationTests
 
         return new GitClient(
             sandbox,
-            githubOpts,
             scopeOpts,
-            secrets,
+            // The IGitTokenProvider seam (Step-51) is exercised with a no-token substitute — the
+            // integration remotes need no auth (no header added), matching the prior SecretsBundle("", "").
+            Substitute.For<IGitTokenProvider>(),
             NullLogger<GitClient>.Instance);
     }
 
@@ -185,7 +183,7 @@ public sealed class GitClientIntegrationTests
             head.Should().Be("main", because: "after clone HEAD should be on main");
 
             // PushAsync must refuse to push when HEAD == DefaultBranch
-            var act = async () => await client.PushAsync(ws, CancellationToken.None);
+            var act = async () => await client.PushAsync(ws, repoUrl, CancellationToken.None);
             await act.Should().ThrowAsync<InvalidOperationException>()
                 .WithMessage("*default branch*");
         }

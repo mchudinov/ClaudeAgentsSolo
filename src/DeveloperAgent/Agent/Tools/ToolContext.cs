@@ -1,5 +1,5 @@
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 
 namespace DeveloperAgent.Agent.Tools;
 

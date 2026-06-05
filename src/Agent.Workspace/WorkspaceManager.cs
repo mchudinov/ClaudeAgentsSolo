@@ -1,8 +1,8 @@
-using DeveloperAgent.Configuration;
+using Agent.Sandbox;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Workspace;
+namespace Agent.Workspace;
 
 /// <summary>
 /// Creates and wipes per-task workspace directories, then orchestrates the initial
@@ -12,19 +12,16 @@ public sealed class WorkspaceManager : IWorkspaceManager
 {
     private readonly IGitClient _git;
     private readonly IOptions<WorkspaceRootOptions> _workspaceOptions;
-    private readonly IOptions<GitHubOptions> _githubOptions;
     private readonly ILogger<WorkspaceManager> _logger;
 
     /// <summary>Initialises a new <see cref="WorkspaceManager"/>.</summary>
     public WorkspaceManager(
         IGitClient git,
         IOptions<WorkspaceRootOptions> workspaceOptions,
-        IOptions<GitHubOptions> githubOptions,
         ILogger<WorkspaceManager> logger)
     {
         _git = git;
         _workspaceOptions = workspaceOptions;
-        _githubOptions = githubOptions;
         _logger = logger;
     }
 
@@ -32,6 +29,7 @@ public sealed class WorkspaceManager : IWorkspaceManager
     public async Task<TaskWorkspace> PrepareAsync(
         string projectItemId,
         string branchName,
+        string repoUrl,
         CancellationToken ct)
     {
         var rootPath = _workspaceOptions.Value.RootPath;
@@ -59,7 +57,6 @@ public sealed class WorkspaceManager : IWorkspaceManager
             DefaultBranch: string.Empty);
 
         // ── 3. Clone ─────────────────────────────────────────────────────────
-        var repoUrl = _githubOptions.Value.Repository.Url;
         await _git.CloneAsync(ws, repoUrl, ct).ConfigureAwait(false);
 
         // ── 4. Resolve default branch ────────────────────────────────────────
