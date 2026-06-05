@@ -1,6 +1,6 @@
 namespace DeveloperAgent.Configuration;
 
-/// <summary>Anthropic API configuration. The actual key is resolved via <see cref="ISecretResolver"/>.</summary>
+/// <summary>Anthropic API configuration. The actual key is resolved via <see cref="Library.Secrets.ISecretResolver"/>.</summary>
 public sealed record AnthropicOptions
 {
     /// <summary>

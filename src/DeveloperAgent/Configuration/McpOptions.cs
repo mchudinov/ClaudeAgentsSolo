@@ -46,7 +46,7 @@ public sealed record McpServerOptions
 
     /// <summary>
     /// Environment variables to set on the child process. Values may be plain strings
-    /// or secret names that <see cref="ISecretResolver"/> can resolve (the resolution
+    /// or secret names that <see cref="Library.Secrets.ISecretResolver"/> can resolve (the resolution
     /// strategy is up to the consuming service).
     /// </summary>
     public IDictionary<string, string> Env { get; init; } = new Dictionary<string, string>();

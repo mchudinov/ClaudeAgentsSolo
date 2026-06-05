@@ -1,9 +1,9 @@
-namespace DeveloperAgent.Configuration;
+namespace Library.Secrets;
 
 /// <summary>
 /// Resolves named secrets from the runtime secret store.
 /// Resolution order: User Secrets (Development) → environment variable → throw.
-/// Phase 2 will add a Dapr Secrets API implementation behind the same interface.
+/// A future implementation may add a Dapr Secrets API behind the same interface.
 /// </summary>
 public interface ISecretResolver
 {
