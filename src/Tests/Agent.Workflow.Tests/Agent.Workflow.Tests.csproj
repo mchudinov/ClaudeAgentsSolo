@@ -16,15 +16,13 @@
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
-    <!-- ConfigurationBuilder/AddInMemoryCollection for the binding tests and the
-         ServiceCollection/BuildServiceProvider for the AddMcpServices DI test
-         (Agent.Mcp itself only references the abstractions). -->
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <!-- ServiceCollection/BuildServiceProvider for the AddWorkflowInspector DI test. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Agent.Mcp\Agent.Mcp.csproj" />
+    <ProjectReference Include="..\..\Agent.Workflow\Agent.Workflow.csproj" />
   </ItemGroup>
 
 </Project>

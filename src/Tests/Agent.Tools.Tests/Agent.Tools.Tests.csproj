@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Agent.Tools\Agent.Tools.csproj" />
+    <ProjectReference Include="..\..\Agent.Tools\Agent.Tools.csproj" />
   </ItemGroup>
 
 </Project>
