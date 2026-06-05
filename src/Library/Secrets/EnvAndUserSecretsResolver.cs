@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace DeveloperAgent.Configuration;
+namespace Library.Secrets;
 
 /// <summary>
 /// Resolves secrets using the following precedence (highest to lowest):

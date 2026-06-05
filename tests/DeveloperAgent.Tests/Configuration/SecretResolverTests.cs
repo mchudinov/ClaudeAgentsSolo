@@ -1,4 +1,4 @@
-using DeveloperAgent.Configuration;
+using Library.Secrets;
 using Microsoft.Extensions.Configuration;
 
 namespace DeveloperAgent.Tests.Configuration;
