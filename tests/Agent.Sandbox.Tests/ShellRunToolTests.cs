@@ -1,11 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Tools;
-using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
 
-namespace DeveloperAgent.Tests.Agent.Tools;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>Unit tests for <see cref="ShellRunTool"/>.</summary>
 public sealed class ShellRunToolTests
@@ -13,14 +9,14 @@ public sealed class ShellRunToolTests
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "shell-run-tests");
     private readonly ICommandSandbox _sandbox = Substitute.For<ICommandSandbox>();
     private readonly ShellRunTool _tool;
-    private readonly ToolContext _ctx;
+    private readonly IToolContext _ctx;
 
     public ShellRunToolTests()
     {
         _tool = new ShellRunTool(_sandbox);
-        var ws = new TaskWorkspace("item-1", "branch-1", Root, "main");
-        _ctx = new ToolContext(new AgentRunState(), ws,
-            new ProjectItem("pid", "cid", 1, "T", "B", ProjectState.InProgress));
+        // ShellRunTool reads only IToolContext.WorkspaceRoot — a slim test double suffices
+        // (the host's concrete ToolContext carries policy fields the tool never touches).
+        _ctx = new TestToolContext(Root);
     }
 
     private void SetupSandbox(int exitCode = 0, string stdout = "", string stderr = "", bool timedOut = false)

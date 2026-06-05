@@ -25,3 +25,10 @@ global using Agent.Runtime;
 // unqualified and sidesteps the Agent.Tools vs DeveloperAgent.Agent.Tools namespace collision the
 // same way the other extracted libraries do.
 global using Agent.Tools;
+// The agent-neutral command/file/egress sandbox was extracted to the Agent.Sandbox library
+// (Step-49). A global using surfaces its types (ICommandSandbox/CommandSandbox, SandboxViolationException,
+// CommandResult, TaskWorkspace, PathDenyPolicy, ICommandDenyPolicy/CommandDenyPolicy, HostAllowlistHandler,
+// IContainerRuntime/DockerContainerRuntime, ShellRunTool, SandboxOptions/CommandDenyRule, WorkspaceOptions,
+// ContainerRuntimeOptions, AddSandboxServices, …) unqualified and sidesteps the Agent.Sandbox vs
+// DeveloperAgent.Sandbox namespace collision the same way the other extracted libraries do.
+global using Agent.Sandbox;

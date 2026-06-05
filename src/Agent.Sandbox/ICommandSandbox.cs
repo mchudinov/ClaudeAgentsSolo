@@ -1,8 +1,8 @@
-namespace DeveloperAgent.Workspace;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Executes an external command line under the allowlist and working-directory
-/// constraints defined in <see cref="DeveloperAgent.Configuration.WorkspaceOptions"/>.
+/// constraints defined in <see cref="WorkspaceOptions"/>.
 /// </summary>
 /// <remarks>
 /// A command line may chain several commands with the top-level connectors
@@ -24,13 +24,13 @@ public interface ICommandSandbox
     /// <c>"dotnet build src/Foo.csproj --no-restore"</c>. Quoted tokens are honoured.
     /// </param>
     /// <param name="workingDirectory">
-    /// Absolute path that must be inside <see cref="DeveloperAgent.Configuration.WorkspaceOptions.RootPath"/>.
+    /// Absolute path that must be inside <see cref="WorkspaceOptions.RootPath"/>.
     /// </param>
     /// <param name="timeout">Maximum wall-clock time before the child process is killed.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <param name="isolate">
     /// When <see langword="true"/> and container isolation is enabled
-    /// (<see cref="DeveloperAgent.Sandbox.ContainerRuntimeOptions.Enabled"/>), the command
+    /// (<see cref="ContainerRuntimeOptions.Enabled"/>), the command
     /// runs inside an isolated child container with the workspace bind-mounted read-write
     /// and the rest of the host read-only. Allowlist / deny / working-directory validation
     /// runs identically regardless of this flag — isolation is defence-in-depth, not a

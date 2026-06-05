@@ -1,7 +1,8 @@
 using System.Text.RegularExpressions;
+using Agent.Tools;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Default <see cref="IPathDenyPolicy"/>. Compiles <see cref="SandboxOptions"/>

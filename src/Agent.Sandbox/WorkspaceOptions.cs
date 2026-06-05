@@ -1,4 +1,4 @@
-namespace DeveloperAgent.Configuration;
+namespace Agent.Sandbox;
 
 /// <summary>Local workspace sandbox configuration.</summary>
 public sealed record WorkspaceOptions
@@ -16,13 +16,13 @@ public sealed record WorkspaceOptions
     /// <summary>
     /// Command prefixes the agent (and orchestrator) are permitted to run.
     /// The sandbox enforces this list as a PREFIX allowlist
-    /// (<see cref="Workspace.CommandSandbox"/>): a bare entry such as <c>"dotnet"</c>
+    /// (<see cref="CommandSandbox"/>): a bare entry such as <c>"dotnet"</c>
     /// allows every <c>dotnet …</c> invocation. We deliberately allow the whole
     /// <c>dotnet</c>, <c>git</c> and <c>gh</c> families plus the read-only file
     /// commands <c>ls</c> / <c>dir</c> and <c>pwd</c>.
     /// <para>
     /// Breadth here is safe because the command DENY policy
-    /// (<see cref="Sandbox.SandboxOptions.DeniedCommands"/>) runs BEFORE this allowlist
+    /// (<see cref="SandboxOptions.DeniedCommands"/>) runs BEFORE this allowlist
     /// and blocks the dangerous verbs reachable inside those families —
     /// <c>git push --force</c>, <c>gh repo delete</c>, <c>gh auth …</c>,
     /// <c>gh api -X/--method DELETE|PUT|POST</c>, <c>gh secret …</c>,
@@ -36,8 +36,8 @@ public sealed record WorkspaceOptions
     /// </para>
     /// <para>
     /// Defined in <c>appsettings.json</c> (<c>Workspace:AllowedCommands</c>) — the single
-    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
-    /// startup. The shipped list is <c>dotnet</c> / <c>git</c> / <c>gh</c> plus the
+    /// source. Empty unless configured; the host's <c>Program.cs</c> requires a non-empty list
+    /// at startup. The shipped list is <c>dotnet</c> / <c>git</c> / <c>gh</c> plus the
     /// read-only commands <c>ls</c> / <c>dir</c> / <c>pwd</c> / <c>cat</c>.
     /// </para>
     /// </summary>

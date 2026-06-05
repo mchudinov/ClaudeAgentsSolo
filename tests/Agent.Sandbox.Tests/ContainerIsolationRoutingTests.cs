@@ -1,13 +1,7 @@
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Workspace;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using NSubstitute;
-using Xunit;
 
-namespace DeveloperAgent.Tests.Sandbox;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>
 /// Tests that <see cref="CommandSandbox"/> routes an <c>isolate: true</c> command through

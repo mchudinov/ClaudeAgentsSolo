@@ -1,10 +1,8 @@
 using System.Net;
 using System.Net.Http;
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Sandbox;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>
 /// Tests for <see cref="HostAllowlistHandler"/>. Each test wires the handler in

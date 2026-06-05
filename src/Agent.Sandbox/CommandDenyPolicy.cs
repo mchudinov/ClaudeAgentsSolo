@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Default <see cref="ICommandDenyPolicy"/>. Evaluates the rules from

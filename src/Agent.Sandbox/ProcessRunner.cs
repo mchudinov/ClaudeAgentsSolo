@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace DeveloperAgent.Workspace;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Result returned by <see cref="IProcessRunner.RunAsync"/>.

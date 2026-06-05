@@ -1,11 +1,10 @@
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
+using Agent.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace DeveloperAgent.Workspace;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Production implementation of <see cref="ICommandSandbox"/>.

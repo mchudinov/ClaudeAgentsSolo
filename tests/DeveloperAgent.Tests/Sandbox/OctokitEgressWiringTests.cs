@@ -1,6 +1,5 @@
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;

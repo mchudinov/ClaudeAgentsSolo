@@ -1,6 +1,4 @@
-using DeveloperAgent.Sandbox;
-
-namespace DeveloperAgent.Tests.Sandbox;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>
 /// Lightweight in-memory <see cref="IContainerRuntime"/> for unit tests on hosts that

@@ -17,7 +17,7 @@ public enum AgentRunOutcome
     /// <summary><see cref="Configuration.ScopeLimitOptions.MaxExecutionTimeSeconds"/> wall-clock budget hit; run aborted.</summary>
     TimeLimitExceeded,
 
-    /// <summary>A tool raised <see cref="Workspace.SandboxViolationException"/>; task is dead.</summary>
+    /// <summary>A tool raised <see cref="global::Agent.Sandbox.SandboxViolationException"/>; task is dead.</summary>
     SandboxViolation,
 
     /// <summary>Unrecoverable Anthropic API error after retries.</summary>
@@ -35,7 +35,7 @@ public enum AgentRunOutcome
 /// </param>
 public sealed record AgentRunRequest(
     DeveloperAgent.GitHub.ProjectItem Item,
-    DeveloperAgent.Workspace.TaskWorkspace Workspace,
+    global::Agent.Sandbox.TaskWorkspace Workspace,
     string? PriorReviewFeedback);
 
 /// <summary>Result of a completed (or terminated) agent run.</summary>

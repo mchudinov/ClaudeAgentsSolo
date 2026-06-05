@@ -1,4 +1,4 @@
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Configuration for per-<c>shell_run</c> container isolation (LLD §P2-I part 3/3).
@@ -14,7 +14,7 @@ public sealed record ContainerRuntimeOptions
 {
     /// <summary>
     /// Master switch. When <see langword="false"/>, <c>shell_run</c> commands run
-    /// directly on the host (via <see cref="Workspace.IProcessRunner"/>) and no
+    /// directly on the host (via <see cref="IProcessRunner"/>) and no
     /// container is started. Defaults to <see langword="false"/>.
     /// </summary>
     public bool Enabled { get; init; }

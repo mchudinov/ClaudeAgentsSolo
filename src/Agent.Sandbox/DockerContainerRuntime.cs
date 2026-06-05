@@ -1,14 +1,13 @@
-using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Production <see cref="IContainerRuntime"/> that runs each command inside an
 /// isolated child container by shelling out to the <c>docker</c>/<c>runc</c> CLI
-/// via <see cref="IProcessRunner"/> — mirroring how <see cref="Workspace.GitClient"/>
-/// and <see cref="Workspace.CommandSandbox"/> invoke external processes.
+/// via <see cref="IProcessRunner"/> — mirroring how the host git client and
+/// <see cref="CommandSandbox"/> invoke external processes.
 /// </summary>
 /// <remarks>
 /// The constructor is <c>internal</c> because <see cref="IProcessRunner"/> is an

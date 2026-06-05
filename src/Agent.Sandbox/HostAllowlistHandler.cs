@@ -1,7 +1,6 @@
-using DeveloperAgent.Workspace;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// <see cref="DelegatingHandler"/> that rejects outbound HTTP requests whose
