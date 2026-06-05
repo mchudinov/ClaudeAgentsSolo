@@ -1,3 +1,4 @@
+using Agent.Workflow;
 using Dapr.Workflow;
 using DeveloperAgent.Workflow.Activities;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,9 +52,12 @@ public static class WorkflowServiceCollectionExtensions
         // registered. See the remarks above: our consumers depend on the interface.
         services.AddSingleton<IDaprWorkflowClient>(sp => sp.GetRequiredService<DaprWorkflowClient>());
 
-        // Idempotent-scheduling seam: AgentLifecycleService asks this whether a deterministic
-        // workflow instance id is free, already active, or terminal before scheduling.
-        services.AddSingleton<IWorkflowInstanceInspector, DaprWorkflowInstanceInspector>();
+        // Idempotent-scheduling seam (extracted to Agent.Workflow in Step-46): AgentLifecycleService
+        // asks IWorkflowInstanceInspector whether a deterministic workflow instance id is free,
+        // already active, or terminal before scheduling. The concrete inspector is internal to the
+        // library, so it is registered through the library's AddWorkflowInspector extension; it
+        // depends on the IDaprWorkflowClient bridged above.
+        services.AddWorkflowInspector();
 
         return services;
     }

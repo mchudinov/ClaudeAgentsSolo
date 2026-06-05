@@ -1,11 +1,11 @@
 using Dapr.Workflow;
 
-namespace DeveloperAgent.Workflow;
+namespace Agent.Workflow;
 
 /// <summary>
 /// <see cref="IWorkflowInstanceInspector"/> backed by <see cref="IDaprWorkflowClient.GetWorkflowStateAsync"/>.
 /// Maps the un-constructible <see cref="WorkflowState"/> onto the plain
-/// <see cref="WorkflowInstanceDisposition"/> the lifecycle service reasons over.
+/// <see cref="WorkflowInstanceDisposition"/> a scheduler reasons over.
 /// </summary>
 /// <remarks>
 /// <see cref="IDaprWorkflowClient.GetWorkflowStateAsync"/> does not throw for an unknown id; it

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral Dapr-Workflow instance inspector: a testable seam around the
+         un-constructible WorkflowState that answers "is this deterministic instance id
+         free, active, or terminal?" — the probe an agent needs for idempotent scheduling.
+         No developer-lifecycle coupling. A consuming agent supplies its own
+         Workflow<TInput,TOutput>, activities, and registration; this library contributes
+         only the inspector. Dapr.Workflow is opt-in here so the shared projects don't carry it. -->
+    <PackageReference Include="Dapr.Workflow" Version="1.17.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>
