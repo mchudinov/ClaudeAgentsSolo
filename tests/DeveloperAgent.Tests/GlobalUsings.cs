@@ -5,3 +5,4 @@ global using Agent.GitHub;
 global using Agent.Memory;
 global using Agent.Runtime;
 global using Agent.Tools;
+global using Agent.Sandbox;

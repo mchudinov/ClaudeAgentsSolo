@@ -35,7 +35,7 @@ public enum AgentRunOutcome
 /// </param>
 public sealed record AgentRunRequest(
     DeveloperAgent.GitHub.ProjectItem Item,
-    DeveloperAgent.Workspace.TaskWorkspace Workspace,
+    global::Agent.Sandbox.TaskWorkspace Workspace,
     string? PriorReviewFeedback);
 
 /// <summary>Result of a completed (or terminated) agent run.</summary>

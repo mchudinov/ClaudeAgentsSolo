@@ -7,7 +7,6 @@ using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Sandbox;
 using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
@@ -110,7 +109,6 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // Provide the minimal tool set: write + create PR.
         // ShellRun and git tools are intentionally omitted so the agent is limited
         // to file writes and PR creation, keeping the test predictable and cheap.
-        var processRunner = new DefaultProcessRunner();
         var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
@@ -118,9 +116,6 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
             DeniedCommands = [],
         });
         var denyPolicy = new PathDenyPolicy(sandboxOpts);
-        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
-        var sandbox = new CommandSandbox(
-            processRunner, workspaceOpts, denyPolicy, commandDenyPolicy, NullLogger<CommandSandbox>.Instance);
 
         // Stub git client: the create_pull_request MaxPRSize gate calls GetDiffStatsAsync;
         // return a small diff so the gate never blocks in this integration scenario.

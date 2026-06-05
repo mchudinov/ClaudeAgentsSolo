@@ -1,4 +1,4 @@
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Request to execute a single command inside an isolated child container.
@@ -26,7 +26,7 @@ public sealed record ContainerRunRequest(
 
 /// <summary>
 /// Result of a <see cref="IContainerRuntime.RunInContainerAsync"/> invocation.
-/// Mirrors <see cref="Workspace.CommandResult"/> so the sandbox can map it 1:1.
+/// Mirrors <see cref="CommandResult"/> so the sandbox can map it 1:1.
 /// </summary>
 /// <param name="ExitCode">Process exit code; <c>-1</c> when the run timed out.</param>
 /// <param name="Stdout">Captured standard output.</param>
@@ -46,7 +46,7 @@ public sealed record ContainerRunResult(
 /// </summary>
 /// <remarks>
 /// The production implementation shells out to the <c>docker</c>/<c>runc</c> CLI via
-/// <see cref="Workspace.IProcessRunner"/>; the host runtime must provide runc or
+/// <see cref="IProcessRunner"/>; the host runtime must provide runc or
 /// Firecracker isolation on Linux. A lightweight stub is used for unit tests and on
 /// development hosts where no container runtime is available.
 /// </remarks>

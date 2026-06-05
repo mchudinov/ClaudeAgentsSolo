@@ -1,4 +1,4 @@
-namespace DeveloperAgent.Sandbox;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Outcome of a <see cref="ICommandDenyPolicy.Check(System.Collections.Generic.IReadOnlyList{string})"/>
@@ -13,7 +13,7 @@ namespace DeveloperAgent.Sandbox;
 /// </param>
 /// <param name="Reason">
 /// Human-readable explanation suitable for inclusion in
-/// <see cref="Workspace.SandboxViolationException"/>. <see langword="null"/> on allow.
+/// <see cref="SandboxViolationException"/>. <see langword="null"/> on allow.
 /// </param>
 public readonly record struct CommandDenyResult(bool IsDenied, string? RuleName, string? Reason)
 {
@@ -22,7 +22,7 @@ public readonly record struct CommandDenyResult(bool IsDenied, string? RuleName,
 }
 
 /// <summary>
-/// Command-deny gate consulted by <see cref="Workspace.ICommandSandbox"/> BEFORE
+/// Command-deny gate consulted by <see cref="ICommandSandbox"/> BEFORE
 /// the workspace allowlist. A rule hit short-circuits the sandbox — deny wins
 /// over allow, so a command can be both on the allowlist and still rejected by
 /// this policy (e.g. <c>git push --force</c> when <c>git push</c> is allowed).

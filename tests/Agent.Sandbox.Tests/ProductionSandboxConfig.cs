@@ -1,18 +1,18 @@
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.Configuration;
 
-namespace DeveloperAgent.Tests.Sandbox;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>
 /// Binds the live <c>src/DeveloperAgent/appsettings.json</c> once and exposes the
 /// resulting <see cref="SandboxOptions"/> / <see cref="WorkspaceOptions"/>.
 /// <para>
-/// After Step-41 the sandbox/workspace allow- and deny-lists live ONLY in
-/// <c>appsettings.json</c> (the C# records no longer seed default lists, so the
-/// <see cref="Microsoft.Extensions.Configuration.ConfigurationBinder"/> can no
-/// longer append config entries onto in-code defaults and double them). Tests that
-/// need the production rule set therefore read it from the bound configuration here
-/// instead of from <c>new SandboxOptions()</c>.
+/// The sandbox/workspace allow- and deny-lists live ONLY in <c>appsettings.json</c>
+/// (the C# records carry no default lists), so tests that need the production rule set
+/// read it from the bound configuration here rather than from <c>new SandboxOptions()</c>.
+/// Replicated in this library's test project (the original lives in
+/// <c>DeveloperAgent.Tests</c>) so the moved sandbox mechanics tests keep asserting the
+/// REAL shipped deny/allow values against the REAL CommandSandbox — the coverage that
+/// matters most for a security boundary.
 /// </para>
 /// </summary>
 internal static class ProductionSandboxConfig

@@ -1,13 +1,7 @@
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Tests.Sandbox;
-using DeveloperAgent.Workspace;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NSubstitute;
 
-namespace DeveloperAgent.Tests.Workspace;
+namespace Agent.Sandbox.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="CommandSandbox"/>.

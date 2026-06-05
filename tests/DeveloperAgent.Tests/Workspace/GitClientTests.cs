@@ -1,8 +1,8 @@
 using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
 using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -38,21 +38,17 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         var githubOpts = Options.Create(new GitHubOptions());
         var scopeOpts = Options.Create(scopeLimits ?? new ScopeLimitOptions());
         var secrets = new SecretsBundle("", "");
-        var processRunner = new DefaultProcessRunner();
         var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
             SecretFileRegexes = [],
             DeniedCommands = [],
         });
-        var denyPolicy = new PathDenyPolicy(sandboxOpts);
-        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
-        var sandbox = new CommandSandbox(
-            processRunner,
-            workspaceOpts,
-            denyPolicy,
-            commandDenyPolicy,
-            Substitute.For<ILogger<CommandSandbox>>());
+
+        // CommandSandbox / DefaultProcessRunner have internal ctors in the Agent.Sandbox
+        // library (Step-49), so build the sandbox through the public AddSandboxServices DI path
+        // rather than constructing it directly.
+        var sandbox = ResolveSandbox(workspaceOpts, sandboxOpts);
 
         return new GitClient(
             sandbox,
@@ -61,6 +57,23 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
             scopeOpts,
             secrets,
             Substitute.For<ILogger<GitClient>>());
+    }
+
+    /// <summary>
+    /// Builds a real <see cref="ICommandSandbox"/> (backed by the real <c>DefaultProcessRunner</c>)
+    /// via the library's public <c>AddSandboxServices</c> registration.
+    /// </summary>
+    private static ICommandSandbox ResolveSandbox(
+        IOptions<WorkspaceOptions> workspaceOpts,
+        IOptions<SandboxOptions> sandboxOpts)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IOptions<WorkspaceOptions>>(workspaceOpts);
+        services.AddSingleton<IOptions<SandboxOptions>>(sandboxOpts);
+        services.AddSingleton<IOptions<ContainerRuntimeOptions>>(Options.Create(new ContainerRuntimeOptions()));
+        services.AddSandboxServices();
+        return services.BuildServiceProvider().GetRequiredService<ICommandSandbox>();
     }
 
     /// <summary>Creates a fresh clone of the fixture's bare upstream.</summary>

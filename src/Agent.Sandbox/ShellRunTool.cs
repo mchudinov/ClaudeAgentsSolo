@@ -1,13 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Workspace;
+using Agent.Tools;
 
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Runs a sandboxed shell command in a workspace-relative working directory.
 /// Delegates to <see cref="ICommandSandbox"/>. Re-throws <see cref="SandboxViolationException"/>
-/// so the runner can end the run with <see cref="Agent.AgentRunOutcome.SandboxViolation"/>.
+/// so the host runner can end the run with a sandbox-violation outcome.
 /// </summary>
 public sealed class ShellRunTool : ITool
 {

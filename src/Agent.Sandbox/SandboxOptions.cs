@@ -1,4 +1,6 @@
-namespace DeveloperAgent.Sandbox;
+using Agent.Tools;
+
+namespace Agent.Sandbox;
 
 /// <summary>
 /// Sandbox configuration. Bound from the <c>Sandbox</c> section of
@@ -29,8 +31,8 @@ public sealed record SandboxOptions
     /// </summary>
     /// <remarks>
     /// Defined in <c>appsettings.json</c> (<c>Sandbox:DenyPathPatterns</c>) — the single
-    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
-    /// startup so the file sandbox is never silently unguarded.
+    /// source. Empty unless configured; the host's <c>Program.cs</c> requires a non-empty list
+    /// at startup so the file sandbox is never silently unguarded.
     /// </remarks>
     public IReadOnlyList<string> DenyPathPatterns { get; init; } = [];
 
@@ -48,10 +50,10 @@ public sealed record SandboxOptions
     /// </summary>
     /// <remarks>
     /// Defined in <c>appsettings.json</c> (<c>Sandbox:DeniedCommands</c>) — the single
-    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
-    /// startup so the command sandbox is never silently unguarded.
+    /// source. Empty unless configured; the host's <c>Program.cs</c> requires a non-empty list
+    /// at startup so the command sandbox is never silently unguarded.
     /// <para>
-    /// Because <see cref="Configuration.WorkspaceOptions.AllowedCommands"/> allows the
+    /// Because <see cref="WorkspaceOptions.AllowedCommands"/> allows the
     /// whole <c>dotnet</c> / <c>git</c> / <c>gh</c> families, the shipped rules block the
     /// well-known sandbox-bypass commands that breadth makes reachable: arbitrary network
     /// egress (<c>curl</c>, <c>wget</c>), privilege escalation (<c>chmod +x</c>), force-push
@@ -77,8 +79,8 @@ public sealed record SandboxOptions
     /// </summary>
     /// <remarks>
     /// Defined in <c>appsettings.json</c> (<c>Sandbox:AllowedHosts</c>) — the single
-    /// source. Empty unless configured; <c>Program.cs</c> requires a non-empty list at
-    /// startup. The shipped hosts cover the three production providers: Anthropic (model
+    /// source. Empty unless configured; the host's <c>Program.cs</c> requires a non-empty list
+    /// at startup. The shipped hosts cover the three production providers: Anthropic (model
     /// API), GitHub (REST/GraphQL + raw content), and Context7 (MCP documentation).
     /// </remarks>
     public IReadOnlyList<string> AllowedHosts { get; init; } = [];
@@ -91,7 +93,7 @@ public sealed record SandboxOptions
 /// entry in <see cref="ArgContains"/> is a substring of at least one argument.
 /// </summary>
 /// <param name="Name">
-/// Human-readable identifier used in the <see cref="Workspace.SandboxViolationException"/>
+/// Human-readable identifier used in the <see cref="SandboxViolationException"/>
 /// message (e.g. <c>no-wget</c>).
 /// </param>
 /// <param name="Program">

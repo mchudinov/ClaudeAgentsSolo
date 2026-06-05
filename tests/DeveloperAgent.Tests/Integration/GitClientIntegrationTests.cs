@@ -1,8 +1,8 @@
 using DeveloperAgent.Configuration;
-using DeveloperAgent.Sandbox;
 using DeveloperAgent.Tests.Sandbox;
 using DeveloperAgent.Workspace;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -32,7 +32,6 @@ public sealed class GitClientIntegrationTests
         });
         var githubOpts = Options.Create(new GitHubOptions());
         var secrets = new SecretsBundle("", "");
-        var processRunner = new DefaultProcessRunner();
         var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
@@ -41,14 +40,10 @@ public sealed class GitClientIntegrationTests
             // so we keep verifying the legitimate push path and not the sandbox itself.
             DeniedCommands = [],
         });
-        var denyPolicy = new PathDenyPolicy(sandboxOpts);
-        var commandDenyPolicy = new CommandDenyPolicy(sandboxOpts);
-        var sandbox = new CommandSandbox(
-            processRunner,
-            workspaceOpts,
-            denyPolicy,
-            commandDenyPolicy,
-            NullLogger<CommandSandbox>.Instance);
+
+        // CommandSandbox / DefaultProcessRunner have internal ctors in the Agent.Sandbox
+        // library (Step-49), so build the sandbox through the public AddSandboxServices DI path.
+        var sandbox = ResolveSandbox(workspaceOpts, sandboxOpts);
 
         // Generous scope limits so the integration push path is not blocked by the
         // Step-21 (P2-H) changed-file / changed-line gate.
@@ -65,6 +60,19 @@ public sealed class GitClientIntegrationTests
             scopeOpts,
             secrets,
             NullLogger<GitClient>.Instance);
+    }
+
+    private static ICommandSandbox ResolveSandbox(
+        IOptions<WorkspaceOptions> workspaceOpts,
+        IOptions<SandboxOptions> sandboxOpts)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IOptions<WorkspaceOptions>>(workspaceOpts);
+        services.AddSingleton<IOptions<SandboxOptions>>(sandboxOpts);
+        services.AddSingleton<IOptions<ContainerRuntimeOptions>>(Options.Create(new ContainerRuntimeOptions()));
+        services.AddSandboxServices();
+        return services.BuildServiceProvider().GetRequiredService<ICommandSandbox>();
     }
 
     /// <summary>

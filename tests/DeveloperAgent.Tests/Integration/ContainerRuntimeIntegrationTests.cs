@@ -1,7 +1,5 @@
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Workspace;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -47,10 +45,14 @@ public sealed class ContainerRuntimeIntegrationTests
                 RuntimeExecutable = "docker",
             });
 
-            var runtime = new DockerContainerRuntime(
-                new DefaultProcessRunner(),
-                options,
-                NullLogger<DockerContainerRuntime>.Instance);
+            // DockerContainerRuntime / DefaultProcessRunner have internal ctors in the
+            // Agent.Sandbox library (Step-49), so resolve IContainerRuntime through the public
+            // AddSandboxServices DI path.
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IOptions<ContainerRuntimeOptions>>(options);
+            services.AddSandboxServices();
+            var runtime = services.BuildServiceProvider().GetRequiredService<IContainerRuntime>();
 
             var request = new ContainerRunRequest(
                 Executable: "echo",
