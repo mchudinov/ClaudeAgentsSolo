@@ -28,8 +28,12 @@ public sealed class CommentOnItemTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
+        // Host-policy tool: the runner always supplies the concrete ToolContext, so downcast to
+        // reach the GitHub Project item this comment is posted against.
+        var ctx = (ToolContext)context;
+
         string? body;
         try
         {
@@ -44,7 +48,7 @@ public sealed class CommentOnItemTool : ITool
 
         try
         {
-            await _github.AddItemCommentAsync(context.Item.ContentNodeId, body, ct);
+            await _github.AddItemCommentAsync(ctx.Item.ContentNodeId, body, ct);
             return new ToolResult(false, "{\"commented\":true}");
         }
         catch (Exception ex)

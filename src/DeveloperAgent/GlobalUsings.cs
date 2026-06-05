@@ -19,3 +19,9 @@ global using Agent.Memory;
 // ToolCallLimitReachedException, PersonaLoader, AnthropicHttpClients, IAnthropicApiKeyProvider, …)
 // unqualified and sidesteps the Agent.Runtime vs DeveloperAgent.Agent namespace collision.
 global using Agent.Runtime;
+// The agent-neutral file-tool kit was extracted to the Agent.Tools library (Step-48). A global
+// using surfaces its types (ITool, ToolResult, IToolContext, IPathDenyPolicy, PathValidator,
+// IToolCallBudget, ReadFileTool/WriteFileTool/EditFileTool/ListDirectoryTool, MafToolAdapter, …)
+// unqualified and sidesteps the Agent.Tools vs DeveloperAgent.Agent.Tools namespace collision the
+// same way the other extracted libraries do.
+global using Agent.Tools;

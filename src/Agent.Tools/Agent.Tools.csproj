@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral file-tool kit (ITool/ToolResult/PathValidator + Read/Write/Edit/ListDir)
+         plus the ITool -> AIFunction bridge (MafToolAdapter) for any MAF agent. AIFunction/
+         AIFunctionArguments/AITool come from Microsoft.Extensions.AI.Abstractions; System.Text.Json
+         is in the net10 shared framework, so no extra package is needed.
+         This library OWNS IPathDenyPolicy (the path-deny seam interface): Agent.Sandbox depends on
+         Agent.Tools for it, which keeps the dependency line Tools -> Sandbox -> Workspace acyclic.
+         There is deliberately NO ProjectReference to Agent.Sandbox here. -->
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.5.2" />
+  </ItemGroup>
+
+</Project>

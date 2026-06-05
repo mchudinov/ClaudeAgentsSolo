@@ -125,10 +125,10 @@ public sealed class AnthropicAgentRunnerTests
         public string Name { get; init; } = "read_file";
         public string Description { get; init; } = "Read";
         public JsonNode InputSchema { get; init; } = JsonNode.Parse("{\"type\":\"object\"}")!;
-        public Func<JsonNode, ToolContext, CancellationToken, Task<ToolResult>>? Handler { get; init; }
+        public Func<JsonNode, IToolContext, CancellationToken, Task<ToolResult>>? Handler { get; init; }
         public int Calls { get; private set; }
 
-        public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+        public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
         {
             Calls++;
             if (Handler is not null)
@@ -282,6 +282,32 @@ public sealed class AnthropicAgentRunnerTests
             Arg.Any<CancellationToken>());
     }
 
+    // ── Test: non-sandbox tool exception is NOT latched as a sandbox violation ──
+
+    [Fact]
+    public async Task NonSandbox_tool_exception_surfaces_ApiError_not_SandboxViolation()
+    {
+        // Guards the Step-48 onToolThrew discrimination: the host callback latches ONLY
+        // SandboxViolationException. A different tool exception must fall through to ApiError,
+        // never be mislabeled SandboxViolation.
+        var faultyTool = new FakeTool
+        {
+            Name = "read_file",
+            Handler = (_, _, _) => throw new InvalidOperationException("tool blew up"),
+        };
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(FunctionCallResponse("read_file")));
+
+        var runner = BuildRunner(chatClient, [faultyTool]);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.ApiError);
+        result.Outcome.Should().NotBe(AgentRunOutcome.SandboxViolation);
+    }
+
     // ── Test: cancellation ────────────────────────────────────────────────────
 
     [Fact]
@@ -325,10 +351,11 @@ public sealed class AnthropicAgentRunnerTests
         {
             Name = "create_pull_request",
             Description = "Create PR",
-            // The tool side-effects the session in production; mimic that here.
+            // The tool side-effects the session in production; mimic that here. The runner always
+            // supplies the concrete ToolContext, so downcast to reach the run session.
             Handler = (_, ctx, _) =>
             {
-                ctx.Session.CreatedPullRequest = expectedPr;
+                ((ToolContext)ctx).Session.CreatedPullRequest = expectedPr;
                 return Task.FromResult(new ToolResult(false, "{\"number\":55}"));
             },
         };

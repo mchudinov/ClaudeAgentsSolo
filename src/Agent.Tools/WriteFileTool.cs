@@ -1,8 +1,6 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Sandbox;
 
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Tools;
 
 /// <summary>Creates or overwrites a file within the workspace, creating parent directories as needed.</summary>
 public sealed class WriteFileTool : ITool
@@ -28,7 +26,7 @@ public sealed class WriteFileTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
         string? path;
         string? content;
@@ -46,7 +44,7 @@ public sealed class WriteFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+        if (!PathValidator.TryResolve(path, context.WorkspaceRoot, _denyPolicy, out var resolved, out var deny))
             return ToolResult.Denied(deny);
 
         try

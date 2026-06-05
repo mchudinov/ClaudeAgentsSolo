@@ -1,4 +1,4 @@
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Tools;
 
 /// <summary>
 /// Classification of a tool error. Allows callers (and the model) to react

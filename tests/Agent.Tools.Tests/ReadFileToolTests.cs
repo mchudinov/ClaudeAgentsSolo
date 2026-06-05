@@ -1,44 +1,27 @@
 using System.Text.Json.Nodes;
-using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Tools;
-using DeveloperAgent.GitHub;
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Workspace;
-using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Agent.Tools;
+namespace Agent.Tools.Tests;
 
 /// <summary>Unit tests for <see cref="ReadFileTool"/>.</summary>
 public sealed class ReadFileToolTests : IDisposable
 {
-    private static readonly IPathDenyPolicy NoOpDeny =
-        new PathDenyPolicy(Options.Create(new SandboxOptions
-        {
-            DenyPathPatterns = [],
-            SecretFileRegexes = [],
-        }));
+    private static readonly IPathDenyPolicy NoOpDeny = new WorkspaceBoundaryDenyPolicy();
 
     private readonly string _root;
-    private readonly TaskWorkspace _ws;
-    private readonly ToolContext _ctx;
+    private readonly IToolContext _ctx;
     private readonly ReadFileTool _tool = new(NoOpDeny);
 
     public ReadFileToolTests()
     {
         _root = Path.Combine(Path.GetTempPath(), "read-file-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        _ws = new TaskWorkspace("item-1", "branch-1", _root, "main");
-        _ctx = MakeContext(_ws);
+        _ctx = new TestToolContext(_root);
     }
 
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
     }
-
-    private static ToolContext MakeContext(TaskWorkspace ws) =>
-        new(new AgentRunState(), ws,
-            new ProjectItem("pid", "cid", 1, "Title", "Body", ProjectState.InProgress));
 
     [Fact]
     public async Task Returns_file_content_for_existing_file()

@@ -1,34 +1,21 @@
 using System.Text.Json.Nodes;
-using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Tools;
-using DeveloperAgent.GitHub;
-using DeveloperAgent.Sandbox;
-using DeveloperAgent.Workspace;
-using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Agent.Tools;
+namespace Agent.Tools.Tests;
 
 /// <summary>Unit tests for <see cref="WriteFileTool"/>.</summary>
 public sealed class WriteFileToolTests : IDisposable
 {
-    private static readonly IPathDenyPolicy NoOpDeny =
-        new PathDenyPolicy(Options.Create(new SandboxOptions
-        {
-            DenyPathPatterns = [],
-            SecretFileRegexes = [],
-        }));
+    private static readonly IPathDenyPolicy NoOpDeny = new WorkspaceBoundaryDenyPolicy();
 
     private readonly string _root;
-    private readonly ToolContext _ctx;
+    private readonly IToolContext _ctx;
     private readonly WriteFileTool _tool = new(NoOpDeny);
 
     public WriteFileToolTests()
     {
         _root = Path.Combine(Path.GetTempPath(), "write-file-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        var ws = new TaskWorkspace("item-1", "branch-1", _root, "main");
-        _ctx = new ToolContext(new AgentRunState(), ws,
-            new ProjectItem("pid", "cid", 1, "T", "B", ProjectState.InProgress));
+        _ctx = new TestToolContext(_root);
     }
 
     public void Dispose()

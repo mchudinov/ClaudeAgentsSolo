@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Tools;
 
 /// <summary>Lists entries under a workspace-relative directory path.</summary>
 public sealed class ListDirectoryTool : ITool
@@ -21,7 +21,7 @@ public sealed class ListDirectoryTool : ITool
         }
         """)!;
 
-    public Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
         string? path;
         bool recursive;
@@ -42,7 +42,7 @@ public sealed class ListDirectoryTool : ITool
         string resolved;
         try
         {
-            resolved = PathValidator.ResolveOrThrow(path, context.Workspace);
+            resolved = PathValidator.ResolveOrThrow(path, context.WorkspaceRoot);
         }
         catch (InvalidOperationException ex)
         {
@@ -61,7 +61,7 @@ public sealed class ListDirectoryTool : ITool
             var pattern = glob ?? "*";
             var entries = Directory.EnumerateFileSystemEntries(resolved, pattern, searchOption);
 
-            string repoRoot = Path.GetFullPath(context.Workspace.RepoRoot);
+            string repoRoot = Path.GetFullPath(context.WorkspaceRoot);
 
             var items = entries.Select(e =>
             {
