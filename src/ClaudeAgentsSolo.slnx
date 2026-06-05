@@ -6,6 +6,7 @@
   <Project Path="Agent.Sandbox/Agent.Sandbox.csproj" />
   <Project Path="Agent.Tools/Agent.Tools.csproj" />
   <Project Path="Agent.Workflow/Agent.Workflow.csproj" />
+  <Project Path="Agent.Workspace/Agent.Workspace.csproj" />
   <Project Path="Library/Library.csproj" />
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
   <Project Path="AppHost/AppHost.csproj" />
@@ -17,5 +18,6 @@
   <Project Path="../tests/Agent.Sandbox.Tests/Agent.Sandbox.Tests.csproj" />
   <Project Path="../tests/Agent.Tools.Tests/Agent.Tools.Tests.csproj" />
   <Project Path="../tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
+  <Project Path="../tests/Agent.Workspace.Tests/Agent.Workspace.Tests.csproj" />
   <Project Path="../tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
 </Solution>

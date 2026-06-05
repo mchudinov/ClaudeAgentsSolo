@@ -6,8 +6,9 @@ namespace DeveloperAgent.Configuration;
 /// the agent halts and surfaces the breach (comment + halt) rather than proceeding.
 /// <para>
 /// The pre-push diff-scope caps (<c>MaxChangedFiles</c>/<c>MaxChangedLines</c>) were carved
-/// out into <see cref="DiffScopeLimitOptions"/> in Step-50; they still bind from this same
-/// <c>ScopeLimits</c> section. This record retains the run/PR-policy limits.
+/// out into <c>DiffScopeLimitOptions</c> in Step-50 (which moved to the <c>Agent.Workspace</c>
+/// library with the git client in Step-51); they still bind from this same <c>ScopeLimits</c>
+/// section. This record retains the run/PR-policy limits.
 /// </para>
 /// </summary>
 public sealed record ScopeLimitOptions

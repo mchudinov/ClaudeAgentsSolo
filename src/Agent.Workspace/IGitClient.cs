@@ -1,4 +1,6 @@
-namespace DeveloperAgent.Workspace;
+using Agent.Sandbox;
+
+namespace Agent.Workspace;
 
 /// <summary>
 /// Provides git operations needed by the lifecycle loop and the agent tools.
@@ -39,8 +41,11 @@ public interface IGitClient
     /// Pushes the current branch to origin.
     /// Uses <c>--set-upstream</c> so the remote-tracking ref is established.
     /// Refuses to push if HEAD is currently on <c>ws.DefaultBranch</c>.
+    /// For HTTPS <paramref name="repoUrl"/> the GitHub token is passed via an
+    /// <c>http.extraheader</c> config flag; the push itself always targets the
+    /// existing <c>origin</c> remote (the URL only governs the auth header).
     /// </summary>
-    Task PushAsync(TaskWorkspace ws, CancellationToken ct);
+    Task PushAsync(TaskWorkspace ws, string repoUrl, CancellationToken ct);
 
     /// <summary>
     /// Returns <c>git status --porcelain</c> output.

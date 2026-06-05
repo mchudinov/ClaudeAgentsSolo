@@ -2,7 +2,7 @@ using Dapr.Workflow;
 using DeveloperAgent.Agent;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Logging;
 
 namespace DeveloperAgent.Workflow.Activities;

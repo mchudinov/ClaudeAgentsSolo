@@ -1,6 +1,6 @@
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;

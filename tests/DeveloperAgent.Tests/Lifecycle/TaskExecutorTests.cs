@@ -4,7 +4,7 @@ using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Observability;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -58,6 +58,8 @@ public sealed class TaskExecutorTests
         AgentMetrics? metrics = null) =>
         new(NullLogger<TaskExecutor>.Instance,
             Options.AsOptions(),
+            Microsoft.Extensions.Options.Options.Create(
+                new GitHubOptions { Repository = new RepositoryOptions { Url = "https://github.com/test/repo" } }),
             github,
             workspaceManager,
             gitClient,
@@ -84,7 +86,7 @@ public sealed class TaskExecutorTests
         var ws = MakeWorkspace();
         var pr = MakePr();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(MakeCompleted(pr));
@@ -132,7 +134,7 @@ public sealed class TaskExecutorTests
         var pr = MakePr();
         const string feedbackText = "Please add unit tests.";
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(MakeCompleted(pr));
@@ -198,7 +200,7 @@ public sealed class TaskExecutorTests
         var item = MakeItem();
         var ws = MakeWorkspace();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(MakeCompleted(pr: null));  // No PR
@@ -238,7 +240,7 @@ public sealed class TaskExecutorTests
         var item = MakeItem();
         var ws = MakeWorkspace();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(new AgentRunResult(AgentRunOutcome.HardCapReached, null, 40, 120, "Reached 40 turns"));
@@ -279,7 +281,7 @@ public sealed class TaskExecutorTests
         var ws = MakeWorkspace();
         const string offendingCommand = "rm -rf /etc";
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(new AgentRunResult(AgentRunOutcome.SandboxViolation, null, 2, 3, offendingCommand));
@@ -320,7 +322,7 @@ public sealed class TaskExecutorTests
         var ws = MakeWorkspace();
         var pr = MakePr();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(MakeCompleted(pr));
@@ -426,7 +428,7 @@ public sealed class TaskExecutorTests
             .Returns("Please fix the tests.");
 
         var ws = MakeWorkspace();
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(new AgentRunResult(AgentRunOutcome.Completed, newPr, 5, 10, null));
@@ -493,7 +495,7 @@ public sealed class TaskExecutorTests
         var ws = MakeWorkspace();
         var pr = MakePr();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(MakeCompleted(pr));
@@ -593,7 +595,7 @@ public sealed class TaskExecutorMetricsTests
         var ws = MakeWorkspace();
         var pr = MakePr();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         // RunAsync takes some "modeled" wall clock; the test advances the FakeTimeProvider
         // between Ready and PR open implicitly via the periodic timer.  Here we only need
@@ -642,6 +644,8 @@ public sealed class TaskExecutorMetricsTests
         var executor = new TaskExecutor(
             NullLogger<TaskExecutor>.Instance,
             Options.AsOptions(),
+            Microsoft.Extensions.Options.Options.Create(
+                new GitHubOptions { Repository = new RepositoryOptions { Url = "https://github.com/test/repo" } }),
             github,
             workspaceMgr,
             gitClient,
@@ -690,7 +694,7 @@ public sealed class TaskExecutorMetricsTests
         var item = MakeItem();
         var ws = MakeWorkspace();
 
-        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        workspaceMgr.PrepareAsync(item.ProjectItemId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ws);
         agentRunner.RunAsync(Arg.Any<AgentRunRequest>(), Arg.Any<CancellationToken>())
             .Returns(new AgentRunResult(AgentRunOutcome.HardCapReached, null, 40, 23, "Reached 40 turns"));
@@ -722,6 +726,8 @@ public sealed class TaskExecutorMetricsTests
         var executor = new TaskExecutor(
             NullLogger<TaskExecutor>.Instance,
             Options.AsOptions(),
+            Microsoft.Extensions.Options.Options.Create(
+                new GitHubOptions { Repository = new RepositoryOptions { Url = "https://github.com/test/repo" } }),
             github,
             workspaceMgr,
             gitClient,

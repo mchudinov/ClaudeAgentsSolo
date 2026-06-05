@@ -5,7 +5,7 @@ using Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

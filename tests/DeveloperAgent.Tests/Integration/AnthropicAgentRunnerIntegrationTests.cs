@@ -8,7 +8,7 @@ using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Tests.Sandbox;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

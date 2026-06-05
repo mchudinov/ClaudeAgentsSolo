@@ -1,6 +1,5 @@
-using DeveloperAgent.Configuration;
+using Agent.Workspace;
 using DeveloperAgent.Tests.Sandbox;
-using DeveloperAgent.Workspace;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -35,9 +34,10 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
             RootPath = workspaceRoot,
             AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
-        var githubOpts = Options.Create(new GitHubOptions());
         var scopeOpts = Options.Create(scopeLimits ?? new DiffScopeLimitOptions());
-        var secrets = new SecretsBundle("", "");
+        // The GitHub token now arrives via the IGitTokenProvider seam (Step-51). These tests use
+        // file-system remotes that need no auth, so a default substitute (null token) is sufficient.
+        var tokenProvider = Substitute.For<IGitTokenProvider>();
         var sandboxOpts = Options.Create(new SandboxOptions
         {
             DenyPathPatterns = [],
@@ -52,9 +52,8 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
 
         return new GitClient(
             sandbox,
-            githubOpts,
             scopeOpts,
-            secrets,
+            tokenProvider,
             Substitute.For<ILogger<GitClient>>());
     }
 
@@ -227,7 +226,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
 
         var client = BuildClient(_fixture.TempDir);
 
-        var act = async () => await client.PushAsync(ws, CancellationToken.None);
+        var act = async () => await client.PushAsync(ws, _fixture.UpstreamUrl, CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
                  .WithMessage("*default branch*");
@@ -255,7 +254,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         await client.CommitAsync(ws, "Add newfile", "Test commit body", CancellationToken.None);
 
         // Push to the local file-system remote
-        await client.PushAsync(ws, CancellationToken.None);
+        await client.PushAsync(ws, _fixture.UpstreamUrl, CancellationToken.None);
 
         // Verify: the upstream bare repo now has the branch
         var branches = RunGitOutput(_fixture.UpstreamPath, "branch");
@@ -346,7 +345,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         await client.AddAsync(ws, ["a.txt", "b.txt"], CancellationToken.None);
         await client.CommitAsync(ws, "Two files", "", CancellationToken.None);
 
-        var act = async () => await client.PushAsync(ws, CancellationToken.None);
+        var act = async () => await client.PushAsync(ws, _fixture.UpstreamUrl, CancellationToken.None);
 
         var ex = (await act.Should().ThrowAsync<ScopeLimitExceededException>()).Which;
         ex.Limit.Should().Be(ScopeLimit.MaxChangedFiles);
@@ -367,7 +366,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         await client.AddAsync(ws, ["a.txt"], CancellationToken.None);
         await client.CommitAsync(ws, "Four lines", "", CancellationToken.None);
 
-        var act = async () => await client.PushAsync(ws, CancellationToken.None);
+        var act = async () => await client.PushAsync(ws, _fixture.UpstreamUrl, CancellationToken.None);
 
         var ex = (await act.Should().ThrowAsync<ScopeLimitExceededException>()).Which;
         ex.Limit.Should().Be(ScopeLimit.MaxChangedLines);
@@ -388,7 +387,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         await client.AddAsync(ws, ["newfile.txt"], CancellationToken.None);
         await client.CommitAsync(ws, "Add newfile", "", CancellationToken.None);
 
-        await client.PushAsync(ws, CancellationToken.None);
+        await client.PushAsync(ws, _fixture.UpstreamUrl, CancellationToken.None);
 
         var branches = RunGitOutput(_fixture.UpstreamPath, "branch");
         branches.Should().Contain(ws.BranchName);

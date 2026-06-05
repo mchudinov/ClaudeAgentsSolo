@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using DeveloperAgent.Agent;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
+using Agent.Workspace;
 using Microsoft.Extensions.Options;
 
 namespace DeveloperAgent.Tests.Sandbox;

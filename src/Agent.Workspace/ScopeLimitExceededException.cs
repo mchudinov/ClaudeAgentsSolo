@@ -1,19 +1,19 @@
-namespace DeveloperAgent.Workspace;
+namespace Agent.Workspace;
 
 /// <summary>Identifies which scope limit (LLD §P2-H) was breached.</summary>
+/// <remarks>
+/// Only the two pre-push diff caps live here; the composite PR-size caps
+/// (<c>ScopeLimitOptions.MaxPRChangedFiles</c>/<c>MaxPRChangedLines</c>) are host policy enforced
+/// by <c>CreatePullRequestTool</c>, which surfaces breaches via an item comment rather than this
+/// exception (Step-51 trimmed the unused PR members off this enum when it moved to the library).
+/// </remarks>
 public enum ScopeLimit
 {
     /// <summary><c>DiffScopeLimitOptions.MaxChangedFiles</c> — changed-file cap before push.</summary>
     MaxChangedFiles,
 
     /// <summary><c>DiffScopeLimitOptions.MaxChangedLines</c> — changed-line cap before push.</summary>
-    MaxChangedLines,
-
-    /// <summary><c>ScopeLimitOptions.MaxPRChangedFiles</c> — composite PR-size file cap.</summary>
-    MaxPRChangedFiles,
-
-    /// <summary><c>ScopeLimitOptions.MaxPRChangedLines</c> — composite PR-size line cap.</summary>
-    MaxPRChangedLines
+    MaxChangedLines
 }
 
 /// <summary>

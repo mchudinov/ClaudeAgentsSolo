@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace DeveloperAgent.Workspace;
+namespace Agent.Workspace;
 
 /// <summary>
 /// Builds the agent's git branch name, following the naming rules in personas/developer.md §7.
