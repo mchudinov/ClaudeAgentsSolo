@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral MCP stdio tool source: connects to configured Model Context Protocol
+         servers over stdio and surfaces their tools as Microsoft.Extensions.AI AITool
+         instances for any MAF agent. No Claude/Anthropic, GitHub, or developer-lifecycle
+         coupling — servers are an open map keyed by name, supplied via configuration.
+         Abstraction packages are declared explicitly because they appear in this library's
+         public surface (AITool, IServiceCollection, IConfiguration). -->
+    <PackageReference Include="ModelContextProtocol" Version="1.3.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.5.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>

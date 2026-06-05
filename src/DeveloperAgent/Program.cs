@@ -1,6 +1,5 @@
 using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Mcp;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using DeveloperAgent.Dashboard;
@@ -157,15 +156,13 @@ public class Program
                 .AddOptions<ContainerRuntimeOptions>()
                 .Bind(builder.Configuration.GetSection("ContainerRuntime"));
 
-            // ── MCP servers (Step-17, P2-F) ───────────────────────────────────────
-            // Both servers are Enabled=false by default — the agent boots cleanly without
+            // ── MCP servers (Step-17, P2-F; extracted to Agent.Mcp in Step-45) ────
+            // Servers are Enabled=false by default — the agent boots cleanly without
             // npx/node available. McpToolSource skips disabled servers silently and a
             // per-server connect failure logs a warning rather than aborting startup.
-            builder.Services
-                .AddOptions<McpOptions>()
-                .Bind(builder.Configuration.GetSection("McpServers"));
-            builder.Services.AddSingleton<IMcpClientConnector, StdioMcpClientConnector>();
-            builder.Services.AddSingleton<IMcpToolSource, McpToolSource>();
+            // AddMcpServices binds McpOptions from McpServers:Servers and registers the
+            // stdio connector + tool source.
+            builder.Services.AddMcpServices(builder.Configuration);
 
             // ── Secret resolution — eager at startup ──────────────────────────────
             builder.Services.AddSingleton<ISecretResolver, EnvAndUserSecretsResolver>();

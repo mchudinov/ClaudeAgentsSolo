@@ -1,19 +1,19 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Agent.Mcp;
+namespace Agent.Mcp;
 
 /// <summary>
 /// Provides Microsoft Agent Framework <see cref="AITool"/> instances exposed by configured MCP servers.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Implementations should connect to all <c>Enabled = true</c> servers in <see cref="DeveloperAgent.Configuration.McpOptions"/>,
-/// list their tools, and return the flattened set. Disabled or unavailable servers contribute zero
-/// tools without throwing — MCP is an enrichment, not a hard dependency.
+/// Implementations connect to all <c>Enabled = true</c> servers in <see cref="McpOptions"/>,
+/// list their tools, and return the flattened set. Disabled or unavailable servers contribute
+/// zero tools without throwing — MCP is an enrichment, not a hard dependency.
 /// </para>
 /// <para>
-/// The result is intended to be concatenated with the local <see cref="Tools.ITool"/>-derived tool list
-/// inside <see cref="AnthropicAgentRunner"/>.
+/// The result is intended to be concatenated with whatever local tool list the consuming agent
+/// already provides.
 /// </para>
 /// </remarks>
 public interface IMcpToolSource
