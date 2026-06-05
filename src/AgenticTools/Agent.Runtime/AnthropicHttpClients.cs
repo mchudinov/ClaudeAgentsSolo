@@ -8,7 +8,7 @@ namespace Agent.Runtime;
 /// </summary>
 /// <remarks>
 /// The string value <c>"anthropic"</c> is a contract shared with the host's egress allowlist and
-/// any Dapr resiliency policy keyed by client name (e.g. <c>dapr-components/resiliency.yaml</c>).
+/// any Dapr resiliency policy keyed by client name (e.g. <c>dapr/components/resiliency.yaml</c>).
 /// Changing it would silently bypass the host's <c>HostAllowlistHandler</c> and resilience tuning,
 /// so the value is pinned by a test.
 /// </remarks>

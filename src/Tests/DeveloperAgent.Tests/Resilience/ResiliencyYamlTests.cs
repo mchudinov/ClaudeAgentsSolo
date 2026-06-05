@@ -5,8 +5,8 @@ using YamlDotNet.RepresentationModel;
 namespace DeveloperAgent.Tests.Resilience;
 
 /// <summary>
-/// Well-formedness tests for the Dapr Resiliency CRD shipped with the DeveloperAgent
-/// (<c>src/DeveloperAgent/dapr-components/resiliency.yaml</c>). These tests do not
+/// Well-formedness tests for the Dapr Resiliency CRD shipped with the AppHost
+/// (<c>src/AppHost/dapr/components/resiliency.yaml</c>). These tests do not
 /// require a live Dapr runtime — they parse the YAML offline and assert the schema
 /// keys, the named policies, and the numeric ranges Step-26 (P2-K) committed to.
 /// </summary>
@@ -169,7 +169,7 @@ public sealed class ResiliencyYamlTests
     /// <summary>
     /// Locates the resiliency YAML on disk by walking up from the test assembly
     /// directory to the repo root, then descending into the source tree. The file
-    /// is *also* copied to bin\Debug via the csproj content include, but we
+    /// is *also* copied to bin\Debug via the AppHost csproj content include, but we
     /// deliberately read the source-tree copy so the test catches edits made to
     /// the YAML even if the consuming project has not been rebuilt.
     /// </summary>
@@ -180,7 +180,7 @@ public sealed class ResiliencyYamlTests
             var dir = AppContext.BaseDirectory;
             for (int i = 0; i < 8 && dir is not null; i++)
             {
-                var candidate = Path.Combine(dir, "src", "DeveloperAgent", "dapr-components", "resiliency.yaml");
+                var candidate = Path.Combine(dir, "src", "AppHost", "dapr", "components", "resiliency.yaml");
                 if (File.Exists(candidate))
                 {
                     return candidate;
@@ -188,7 +188,7 @@ public sealed class ResiliencyYamlTests
                 dir = Path.GetDirectoryName(dir);
             }
             throw new FileNotFoundException(
-                "Could not locate src/DeveloperAgent/dapr-components/resiliency.yaml by walking up from " +
+                "Could not locate src/AppHost/dapr/components/resiliency.yaml by walking up from " +
                 AppContext.BaseDirectory);
         }
     }

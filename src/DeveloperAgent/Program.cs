@@ -202,7 +202,7 @@ public class Program
             //      never re-hit a denied host).
             //   2. Standard resilience pipeline — timeouts + retries with exponential
             //      back-off + circuit breaker.
-            // The Dapr Resiliency CRD (src/DeveloperAgent/dapr-components/resiliency.yaml)
+            // The Dapr Resiliency CRD (src/AppHost/dapr/components/resiliency.yaml)
             // covers cross-process service-invocation and state-store calls; the policies
             // below cover the in-process transport layer to Anthropic and GitHub.
             // HostAllowlistHandler itself is DI-registered further down as a transient.

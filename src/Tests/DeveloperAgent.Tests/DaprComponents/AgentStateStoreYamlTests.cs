@@ -5,7 +5,7 @@ namespace DeveloperAgent.Tests.DaprComponents;
 
 /// <summary>
 /// Well-formedness tests for the declarative Dapr state-store component shipped with
-/// the DeveloperAgent (<c>src/DeveloperAgent/dapr-components/agent-state-store.yaml</c>).
+/// the AppHost (<c>src/AppHost/dapr/components/agent-state-store.yaml</c>).
 /// These tests do not require a live Dapr runtime or Docker — they parse the YAML
 /// offline and assert the schema keys and the metadata the component must declare.
 ///
@@ -113,7 +113,7 @@ public sealed class AgentStateStoreYamlTests
             var dir = AppContext.BaseDirectory;
             for (int i = 0; i < 8 && dir is not null; i++)
             {
-                var candidate = Path.Combine(dir, "src", "DeveloperAgent", "dapr-components", "agent-state-store.yaml");
+                var candidate = Path.Combine(dir, "src", "AppHost", "dapr", "components", "agent-state-store.yaml");
                 if (File.Exists(candidate))
                 {
                     return candidate;
@@ -121,7 +121,7 @@ public sealed class AgentStateStoreYamlTests
                 dir = Path.GetDirectoryName(dir);
             }
             throw new FileNotFoundException(
-                "Could not locate src/DeveloperAgent/dapr-components/agent-state-store.yaml by walking up from " +
+                "Could not locate src/AppHost/dapr/components/agent-state-store.yaml by walking up from " +
                 AppContext.BaseDirectory);
         }
     }

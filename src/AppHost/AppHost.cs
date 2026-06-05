@@ -12,7 +12,7 @@ var stateStore = builder.AddDaprComponent(
     new DaprComponentOptions { LocalPath = stateStoreYamlPath });
 
 // Dapr Resiliency CRD (Step-26, P2-K). The YAML is published with the
-// DeveloperAgent's content output; we hand a file path to the toolkit, which
+// AppHost's content output; we hand a file path to the toolkit, which
 // adds the containing folder to the sidecar's --resources-path so the daprd
 // process loads it at startup alongside the state-store component.
 var resiliencyYamlPath = ResolveDaprComponentPath("resiliency.yaml");
@@ -37,16 +37,17 @@ builder.AddContainer("redisinsight", "redis/redisinsight")
 
 builder.Build().Run();
 
-// Resolves the absolute path to a file under DeveloperAgent's dapr-components
+// Resolves the absolute path to a file under AppHost's dapr/components
 // folder, regardless of whether the AppHost is launched from the repo root,
 // the AppHost project folder, or via `dotnet run`. The folder is shipped to
-// the DeveloperAgent output via its csproj content include; locally we point
-// at the source-tree file so edits round-trip without rebuilding.
+// the AppHost output via its csproj content include; locally we point at the
+// source-tree file (three levels up from bin/<cfg>/<tfm> to the project root)
+// so edits round-trip without rebuilding.
 static string ResolveDaprComponentPath(string fileName)
 {
     var sourcePath = Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
-        "..", "..", "..", "..", "DeveloperAgent", "dapr-components", fileName));
+        "..", "..", "..", "dapr", "components", fileName));
     return sourcePath;
 }
 

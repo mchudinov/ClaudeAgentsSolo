@@ -17,4 +17,12 @@
     <ProjectReference Include="..\DeveloperAgent\DeveloperAgent.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Dapr component CRDs (state store + resiliency). AppHost owns the Dapr
+         wiring, so the component definitions live here; AppHost.cs resolves them
+         from the source tree and the toolkit feeds them to the sidecar. Copied to
+         output to ship with the build. -->
+    <Content Include="dapr\components\**\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
