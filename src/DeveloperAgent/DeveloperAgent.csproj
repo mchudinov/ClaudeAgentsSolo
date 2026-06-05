@@ -46,6 +46,7 @@
     <ProjectReference Include="..\Agent.Mcp\Agent.Mcp.csproj" />
     <ProjectReference Include="..\Agent.Memory\Agent.Memory.csproj" />
     <ProjectReference Include="..\Agent.Runtime\Agent.Runtime.csproj" />
+    <ProjectReference Include="..\Agent.Tools\Agent.Tools.csproj" />
     <ProjectReference Include="..\Agent.Workflow\Agent.Workflow.csproj" />
     <ProjectReference Include="..\Library\Library.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />

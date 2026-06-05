@@ -125,10 +125,10 @@ public sealed class AnthropicAgentRunnerTests
         public string Name { get; init; } = "read_file";
         public string Description { get; init; } = "Read";
         public JsonNode InputSchema { get; init; } = JsonNode.Parse("{\"type\":\"object\"}")!;
-        public Func<JsonNode, ToolContext, CancellationToken, Task<ToolResult>>? Handler { get; init; }
+        public Func<JsonNode, IToolContext, CancellationToken, Task<ToolResult>>? Handler { get; init; }
         public int Calls { get; private set; }
 
-        public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+        public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
         {
             Calls++;
             if (Handler is not null)
@@ -325,10 +325,11 @@ public sealed class AnthropicAgentRunnerTests
         {
             Name = "create_pull_request",
             Description = "Create PR",
-            // The tool side-effects the session in production; mimic that here.
+            // The tool side-effects the session in production; mimic that here. The runner always
+            // supplies the concrete ToolContext, so downcast to reach the run session.
             Handler = (_, ctx, _) =>
             {
-                ctx.Session.CreatedPullRequest = expectedPr;
+                ((ToolContext)ctx).Session.CreatedPullRequest = expectedPr;
                 return Task.FromResult(new ToolResult(false, "{\"number\":55}"));
             },
         };

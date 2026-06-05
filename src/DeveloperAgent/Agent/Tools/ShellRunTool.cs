@@ -38,7 +38,7 @@ public sealed class ShellRunTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
         string? command;
         string? workingDirectory;
@@ -61,13 +61,13 @@ public sealed class ShellRunTool : ITool
         string resolvedCwd;
         if (string.IsNullOrWhiteSpace(workingDirectory))
         {
-            resolvedCwd = Path.GetFullPath(context.Workspace.RepoRoot);
+            resolvedCwd = Path.GetFullPath(context.WorkspaceRoot);
         }
         else
         {
             try
             {
-                resolvedCwd = PathValidator.ResolveOrThrow(workingDirectory, context.Workspace);
+                resolvedCwd = PathValidator.ResolveOrThrow(workingDirectory, context.WorkspaceRoot);
             }
             catch (InvalidOperationException ex)
             {

@@ -1,8 +1,6 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Sandbox;
 
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Tools;
 
 /// <summary>
 /// Replaces exactly one occurrence of <c>old_string</c> with <c>new_string</c> in a workspace file.
@@ -32,7 +30,7 @@ public sealed class EditFileTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
         string? path, oldString, newString;
         try
@@ -52,7 +50,7 @@ public sealed class EditFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+        if (!PathValidator.TryResolve(path, context.WorkspaceRoot, _denyPolicy, out var resolved, out var deny))
             return ToolResult.Denied(deny);
 
         if (!File.Exists(resolved))

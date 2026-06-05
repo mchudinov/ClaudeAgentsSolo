@@ -1,8 +1,6 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Sandbox;
 
-namespace DeveloperAgent.Agent.Tools;
+namespace Agent.Tools;
 
 /// <summary>Reads a UTF-8 text file from within the workspace.</summary>
 public sealed class ReadFileTool : ITool
@@ -27,7 +25,7 @@ public sealed class ReadFileTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
         string? path;
         try
@@ -41,7 +39,7 @@ public sealed class ReadFileTool : ITool
             return new ToolResult(true, $"Invalid input: {ex.Message}");
         }
 
-        if (!PathValidator.TryResolve(path, context.Workspace, _denyPolicy, out var resolved, out var deny))
+        if (!PathValidator.TryResolve(path, context.WorkspaceRoot, _denyPolicy, out var resolved, out var deny))
             return ToolResult.Denied(deny);
 
         if (!File.Exists(resolved))

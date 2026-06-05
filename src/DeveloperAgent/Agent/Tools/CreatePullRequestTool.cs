@@ -52,8 +52,12 @@ public sealed class CreatePullRequestTool : ITool
         }
         """)!;
 
-    public async Task<ToolResult> InvokeAsync(JsonNode input, ToolContext context, CancellationToken ct)
+    public async Task<ToolResult> InvokeAsync(JsonNode input, IToolContext context, CancellationToken ct)
     {
+        // Host-policy tool: the runner always supplies the concrete ToolContext, so downcast to
+        // reach the workspace branch/default-branch, the item, and the run session.
+        var ctx = (ToolContext)context;
+
         string? summary, userVisible, testsRun, notes, titleOverride;
         try
         {
@@ -106,7 +110,7 @@ public sealed class CreatePullRequestTool : ITool
         try
         {
             stats = await _gitClient.GetDiffStatsAsync(
-                context.Workspace, context.Workspace.DefaultBranch, ct);
+                ctx.Workspace, ctx.Workspace.DefaultBranch, ct);
         }
         catch (Exception ex)
         {
@@ -124,7 +128,7 @@ public sealed class CreatePullRequestTool : ITool
 
             try
             {
-                await _github.AddItemCommentAsync(context.Item.ContentNodeId, comment, ct);
+                await _github.AddItemCommentAsync(ctx.Item.ContentNodeId, comment, ct);
             }
             catch (Exception ex)
             {
@@ -137,15 +141,15 @@ public sealed class CreatePullRequestTool : ITool
         }
 
         var request = new CreatePullRequest(
-            HeadBranch: context.Workspace.BranchName,
-            BaseBranch: context.Workspace.DefaultBranch,
+            HeadBranch: ctx.Workspace.BranchName,
+            BaseBranch: ctx.Workspace.DefaultBranch,
             Title: title,
             MarkdownBody: body);
 
         try
         {
             var pr = await _github.CreatePullRequestAsync(request, ct);
-            context.Session.CreatedPullRequest = pr;
+            ctx.Session.CreatedPullRequest = pr;
             var json = JsonSerializer.Serialize(new { number = pr.Number, html_url = pr.HtmlUrl, head_sha = pr.HeadSha });
             return new ToolResult(false, json);
         }

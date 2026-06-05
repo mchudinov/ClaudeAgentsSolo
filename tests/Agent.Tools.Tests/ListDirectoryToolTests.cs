@@ -1,26 +1,20 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Tools;
-using DeveloperAgent.GitHub;
-using DeveloperAgent.Workspace;
 
-namespace DeveloperAgent.Tests.Agent.Tools;
+namespace Agent.Tools.Tests;
 
 /// <summary>Unit tests for <see cref="ListDirectoryTool"/>.</summary>
 public sealed class ListDirectoryToolTests : IDisposable
 {
     private readonly string _root;
-    private readonly ToolContext _ctx;
+    private readonly IToolContext _ctx;
     private readonly ListDirectoryTool _tool = new();
 
     public ListDirectoryToolTests()
     {
         _root = Path.Combine(Path.GetTempPath(), "list-dir-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        var ws = new TaskWorkspace("item-1", "branch-1", _root, "main");
-        _ctx = new ToolContext(new AgentRunState(), ws,
-            new ProjectItem("pid", "cid", 1, "T", "B", ProjectState.InProgress));
+        _ctx = new TestToolContext(_root);
 
         // Create structure: root/a.txt, root/sub/b.cs
         File.WriteAllText(Path.Combine(_root, "a.txt"), "");

@@ -66,6 +66,21 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         var counters = new RunCounters();
         var context = new ToolContext(session, request.Workspace, request.Item);
 
+        // The per-run tool-call budget (Agent.Tools seam): each MafToolAdapter consults it before
+        // and after every invocation; ThrowIfExhausted throws ToolCallLimitReachedException when
+        // MaxToolCalls is reached. One instance, shared by all adapters.
+        var budget = new ScopeLimitToolCallBudget(session, _scopeLimits.MaxToolCalls);
+
+        // Sandbox-violation latch (Agent.Tools onToolThrew seam): a sandbox violation is the only
+        // run-terminating tool exception. Latch it onto the session keyed on the offending tool so
+        // the catch below can surface AgentRunOutcome.SandboxViolation after MAF wraps the
+        // exception. Every other tool exception flows through untouched and is re-thrown.
+        void OnToolThrew(string toolName, Exception ex)
+        {
+            if (ex is SandboxViolationException sve)
+                session.SandboxViolation = (toolName, sve);
+        }
+
         // Scope-limit gate (LLD §P2-H): give this run a wall-clock budget. The linked
         // token does NOT flip the caller's `ct`, so a timeout falls through to a dedicated
         // catch keyed on `timeoutCts` below — NOT the caller-cancellation catch.
@@ -78,7 +93,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         // CreatePullRequestTool storing the resulting PullRequest on session.CreatedPullRequest.
         // MaxToolCalls is enforced inside the adapter against session.ToolCallsUsed.
         IList<AITool> mafTools = _tools
-            .Select(t => (AITool)new MafToolAdapter(t, context, _scopeLimits.MaxToolCalls))
+            .Select(t => (AITool)new MafToolAdapter(t, context, budget, OnToolThrew))
             .ToList();
 
         // Append MCP-sourced tools (GitHub MCP, Context7 MCP) when configured. These come
