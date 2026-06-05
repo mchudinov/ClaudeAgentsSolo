@@ -1,4 +1,4 @@
-using DeveloperAgent.Dashboard;
+using Library.Logging;
 using Serilog.Events;
 using Serilog.Parsing;
 

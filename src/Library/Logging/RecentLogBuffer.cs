@@ -1,11 +1,11 @@
 using Serilog.Core;
 using Serilog.Events;
 
-namespace DeveloperAgent.Dashboard;
+namespace Library.Logging;
 
 /// <summary>
 /// Fixed-capacity ring buffer that doubles as a Serilog <see cref="ILogEventSink"/> and
-/// the dashboard's <see cref="IRecentLogBuffer"/> read service. A <b>single instance</b>
+/// a dashboard's <see cref="IRecentLogBuffer"/> read service. A <b>single instance</b>
 /// must be registered for both roles: Serilog writes into it via <see cref="Emit"/> and
 /// the dashboard reads it via <see cref="Recent"/>. Registering separate instances would
 /// leave the dashboard reading an empty buffer.
