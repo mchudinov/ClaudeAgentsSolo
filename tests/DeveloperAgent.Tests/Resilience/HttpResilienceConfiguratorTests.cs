@@ -1,9 +1,9 @@
 using System.Net;
-using DeveloperAgent.Resilience;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
+using ServiceDefaults.Resilience;
 
 namespace DeveloperAgent.Tests.Resilience;
 
