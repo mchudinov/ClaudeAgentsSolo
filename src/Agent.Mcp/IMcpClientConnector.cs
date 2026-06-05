@@ -1,12 +1,11 @@
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Agent.Mcp;
+namespace Agent.Mcp;
 
 /// <summary>
 /// Single-server seam used by <see cref="McpToolSource"/>. Hides the concrete
 /// <c>ModelContextProtocol</c> SDK call site so unit tests can drive
-/// <see cref="McpToolSource"/> without spawning <c>npx</c>.
+/// <see cref="McpToolSource"/> without spawning a child process.
 /// </summary>
 internal interface IMcpClientConnector
 {
@@ -16,8 +15,8 @@ internal interface IMcpClientConnector
     /// ensure that any disposable resources (process handles, transports) are tracked and
     /// disposed by the caller via <see cref="IAsyncDisposable"/> on the owning service.
     /// </summary>
-    /// <param name="serverName">Diagnostic label (e.g. <c>"GitHub"</c>, <c>"Context7"</c>).</param>
-    /// <param name="server">Server-specific options bound from <c>McpServers:{serverName}</c>.</param>
+    /// <param name="serverName">Diagnostic label and stdio transport name (the map key).</param>
+    /// <param name="server">Server-specific options bound from <c>McpServers:Servers:{serverName}</c>.</param>
     /// <param name="ct">Cancellation token observed during connect + list.</param>
     Task<IReadOnlyList<AITool>> ConnectAndListToolsAsync(
         string serverName,

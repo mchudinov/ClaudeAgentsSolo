@@ -1,14 +1,13 @@
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Agent.Mcp;
+namespace Agent.Mcp;
 
 /// <summary>
-/// Default <see cref="IMcpToolSource"/>. Walks <see cref="McpOptions"/>, asks the injected
-/// <see cref="IMcpClientConnector"/> to connect to each enabled server, and returns the
-/// flattened tool set.
+/// Default <see cref="IMcpToolSource"/>. Walks <see cref="McpOptions.Servers"/>, asks the
+/// injected <see cref="IMcpClientConnector"/> to connect to each enabled server, and returns
+/// the flattened tool set.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,7 +17,7 @@ namespace DeveloperAgent.Agent.Mcp;
 /// </para>
 /// <para>
 /// A failure connecting to one server is logged but does not abort the whole call — the
-/// other server still contributes whatever tools it lists. MCP is an enrichment, not a
+/// other servers still contribute whatever tools they list. MCP is an enrichment, not a
 /// hard dependency: the agent must remain functional with everything disabled.
 /// </para>
 /// </remarks>
@@ -54,8 +53,10 @@ internal sealed class McpToolSource : IMcpToolSource
                 return cached2;
 
             var tools = new List<AITool>();
-            await AppendAsync("GitHub", _options.GitHub, tools, ct).ConfigureAwait(false);
-            await AppendAsync("Context7", _options.Context7, tools, ct).ConfigureAwait(false);
+            foreach (var (serverName, server) in _options.Servers)
+            {
+                await AppendAsync(serverName, server, tools, ct).ConfigureAwait(false);
+            }
 
             _cached = tools;
             return _cached;

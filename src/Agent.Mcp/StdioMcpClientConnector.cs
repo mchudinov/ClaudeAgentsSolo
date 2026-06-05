@@ -1,9 +1,8 @@
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 
-namespace DeveloperAgent.Agent.Mcp;
+namespace Agent.Mcp;
 
 /// <summary>
 /// Production <see cref="IMcpClientConnector"/> that launches MCP servers as child processes

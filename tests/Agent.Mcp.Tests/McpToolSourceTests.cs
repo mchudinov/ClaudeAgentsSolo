@@ -1,16 +1,15 @@
 using System.Text.Json;
-using DeveloperAgent.Agent.Mcp;
-using DeveloperAgent.Configuration;
+using Agent.Mcp;
 using FluentAssertions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Agent.Mcp;
+namespace Agent.Mcp.Tests;
 
 /// <summary>
 /// Unit tests for <see cref="McpToolSource"/> using a fake <see cref="IMcpClientConnector"/>.
-/// No <c>npx</c> child processes are spawned.
+/// No child processes are spawned.
 /// </summary>
 public sealed class McpToolSourceTests
 {
@@ -45,14 +44,37 @@ public sealed class McpToolSourceTests
         }
     }
 
+    private static McpOptions Options(params (string Name, McpServerOptions Server)[] servers)
+    {
+        var dict = new Dictionary<string, McpServerOptions>();
+        foreach (var (name, server) in servers)
+            dict[name] = server;
+        return new McpOptions { Servers = dict };
+    }
+
     private static McpToolSource BuildSource(StubConnector connector, McpOptions opts)
-        => new(connector, Options.Create(opts), NullLogger<McpToolSource>.Instance);
+        => new(connector, Microsoft.Extensions.Options.Options.Create(opts), NullLogger<McpToolSource>.Instance);
+
+    [Fact]
+    public async Task GetToolsAsync_returns_empty_when_no_servers_configured()
+    {
+        var connector = new StubConnector();
+        var source = BuildSource(connector, new McpOptions());
+
+        var tools = await source.GetToolsAsync(CancellationToken.None);
+
+        tools.Should().BeEmpty();
+        connector.Calls.Should().BeEmpty("no servers means nothing to connect to");
+    }
 
     [Fact]
     public async Task GetToolsAsync_returns_empty_when_all_servers_disabled()
     {
         var connector = new StubConnector();
-        var source = BuildSource(connector, new McpOptions());
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = false, Command = "npx" }),
+            ("Context7", new McpServerOptions { Enabled = false, Command = "npx" }));
+        var source = BuildSource(connector, opts);
 
         var tools = await source.GetToolsAsync(CancellationToken.None);
 
@@ -68,11 +90,9 @@ public sealed class McpToolSourceTests
         // Context7 will be disabled — its entry should never be queried.
         connector.ByServer["Context7"] = new AITool[] { new FakeAITool("ctx_lookup") };
 
-        var opts = new McpOptions
-        {
-            GitHub = new McpServerOptions { Enabled = true, Command = "npx", Arguments = new[] { "-y", "gh" } },
-            Context7 = new McpServerOptions { Enabled = false, Command = "npx" },
-        };
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = true, Command = "npx", Arguments = new[] { "-y", "gh" } }),
+            ("Context7", new McpServerOptions { Enabled = false, Command = "npx" }));
 
         var source = BuildSource(connector, opts);
         var tools = await source.GetToolsAsync(CancellationToken.None);
@@ -89,11 +109,9 @@ public sealed class McpToolSourceTests
         connector.ByServer["GitHub"] = new AITool[] { new FakeAITool("gh_a"), new FakeAITool("gh_b") };
         connector.ByServer["Context7"] = new AITool[] { new FakeAITool("ctx_c") };
 
-        var opts = new McpOptions
-        {
-            GitHub = new McpServerOptions { Enabled = true, Command = "npx" },
-            Context7 = new McpServerOptions { Enabled = true, Command = "npx" },
-        };
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = true, Command = "npx" }),
+            ("Context7", new McpServerOptions { Enabled = true, Command = "npx" }));
 
         var source = BuildSource(connector, opts);
         var tools = await source.GetToolsAsync(CancellationToken.None);
@@ -109,11 +127,9 @@ public sealed class McpToolSourceTests
         connector.Throws["GitHub"] = new InvalidOperationException("npx not on PATH");
         connector.ByServer["Context7"] = new AITool[] { new FakeAITool("ctx_only") };
 
-        var opts = new McpOptions
-        {
-            GitHub = new McpServerOptions { Enabled = true, Command = "npx" },
-            Context7 = new McpServerOptions { Enabled = true, Command = "npx" },
-        };
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = true, Command = "npx" }),
+            ("Context7", new McpServerOptions { Enabled = true, Command = "npx" }));
 
         var source = BuildSource(connector, opts);
         var tools = await source.GetToolsAsync(CancellationToken.None);
@@ -129,18 +145,16 @@ public sealed class McpToolSourceTests
         var connector = new StubConnector();
         connector.ByServer["GitHub"] = new AITool[] { new FakeAITool("gh_x") };
 
-        var opts = new McpOptions
-        {
-            GitHub = new McpServerOptions { Enabled = true, Command = "npx" },
-            Context7 = new McpServerOptions { Enabled = false, Command = "npx" },
-        };
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = true, Command = "npx" }),
+            ("Context7", new McpServerOptions { Enabled = false, Command = "npx" }));
         var source = BuildSource(connector, opts);
 
         _ = await source.GetToolsAsync(CancellationToken.None);
         _ = await source.GetToolsAsync(CancellationToken.None);
         _ = await source.GetToolsAsync(CancellationToken.None);
 
-        connector.Calls.Should().HaveCount(1, "the source must cache to avoid re-spawning npx");
+        connector.Calls.Should().HaveCount(1, "the source must cache to avoid re-spawning child processes");
     }
 
     [Fact]
@@ -149,11 +163,9 @@ public sealed class McpToolSourceTests
         var connector = new StubConnector();
         connector.Throws["GitHub"] = new OperationCanceledException();
 
-        var opts = new McpOptions
-        {
-            GitHub = new McpServerOptions { Enabled = true, Command = "npx" },
-            Context7 = new McpServerOptions { Enabled = false, Command = "npx" },
-        };
+        var opts = Options(
+            ("GitHub", new McpServerOptions { Enabled = true, Command = "npx" }),
+            ("Context7", new McpServerOptions { Enabled = false, Command = "npx" }));
         var source = BuildSource(connector, opts);
 
         Func<Task> act = () => source.GetToolsAsync(CancellationToken.None);
