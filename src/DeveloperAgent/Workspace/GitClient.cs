@@ -15,23 +15,20 @@ public sealed class GitClient : IGitClient
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ICommandSandbox _sandbox;
-    private readonly IOptions<WorkspaceOptions> _workspaceOptions;
     private readonly IOptions<GitHubOptions> _githubOptions;
-    private readonly ScopeLimitOptions _scopeLimits;
+    private readonly DiffScopeLimitOptions _scopeLimits;
     private readonly SecretsBundle _secrets;
     private readonly ILogger<GitClient> _logger;
 
     /// <summary>Initialises a new <see cref="GitClient"/>.</summary>
     public GitClient(
         ICommandSandbox sandbox,
-        IOptions<WorkspaceOptions> workspaceOptions,
         IOptions<GitHubOptions> githubOptions,
-        IOptions<ScopeLimitOptions> scopeLimits,
+        IOptions<DiffScopeLimitOptions> scopeLimits,
         SecretsBundle secrets,
         ILogger<GitClient> logger)
     {
         _sandbox = sandbox;
-        _workspaceOptions = workspaceOptions;
         _githubOptions = githubOptions;
         _scopeLimits = scopeLimits.Value;
         _secrets = secrets;

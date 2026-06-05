@@ -11,14 +11,14 @@ namespace DeveloperAgent.Workspace;
 public sealed class WorkspaceManager : IWorkspaceManager
 {
     private readonly IGitClient _git;
-    private readonly IOptions<WorkspaceOptions> _workspaceOptions;
+    private readonly IOptions<WorkspaceRootOptions> _workspaceOptions;
     private readonly IOptions<GitHubOptions> _githubOptions;
     private readonly ILogger<WorkspaceManager> _logger;
 
     /// <summary>Initialises a new <see cref="WorkspaceManager"/>.</summary>
     public WorkspaceManager(
         IGitClient git,
-        IOptions<WorkspaceOptions> workspaceOptions,
+        IOptions<WorkspaceRootOptions> workspaceOptions,
         IOptions<GitHubOptions> githubOptions,
         ILogger<WorkspaceManager> logger)
     {

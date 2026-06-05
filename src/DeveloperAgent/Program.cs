@@ -86,14 +86,23 @@ public class Program
             builder.Services
                 .AddOptions<ScopeLimitOptions>()
                 .Bind(builder.Configuration.GetSection("ScopeLimits"))
-                .Validate(o => o.MaxChangedFiles > 0, "ScopeLimits.MaxChangedFiles must be > 0")
-                .Validate(o => o.MaxChangedLines > 0, "ScopeLimits.MaxChangedLines must be > 0")
                 .Validate(o => o.MaxExecutionTimeSeconds > 0, "ScopeLimits.MaxExecutionTimeSeconds must be > 0")
                 .Validate(o => o.MaxModelTurns > 0, "ScopeLimits.MaxModelTurns must be > 0")
                 .Validate(o => o.MaxToolCalls > 0, "ScopeLimits.MaxToolCalls must be > 0")
                 .Validate(o => o.MaxRetryCount > 0, "ScopeLimits.MaxRetryCount must be > 0")
                 .Validate(o => o.MaxPRChangedFiles > 0, "ScopeLimits.MaxPRChangedFiles must be > 0")
                 .Validate(o => o.MaxPRChangedLines > 0, "ScopeLimits.MaxPRChangedLines must be > 0")
+                .ValidateOnStart();
+
+            // Step-50: the pre-push diff-scope caps were carved out of ScopeLimitOptions into
+            // their own record so the git/workspace layer depends only on these two limits.
+            // Bound from the SAME ScopeLimits section (both halves bind from one section; these
+            // are scalars, so the ConfigurationBinder append-on-default gotcha does not apply).
+            builder.Services
+                .AddOptions<DiffScopeLimitOptions>()
+                .Bind(builder.Configuration.GetSection("ScopeLimits"))
+                .Validate(o => o.MaxChangedFiles > 0, "ScopeLimits.MaxChangedFiles must be > 0")
+                .Validate(o => o.MaxChangedLines > 0, "ScopeLimits.MaxChangedLines must be > 0")
                 .ValidateOnStart();
 
             builder.Services
@@ -124,6 +133,16 @@ public class Program
                 .Bind(builder.Configuration.GetSection("Workspace"))
                 .Validate(o => !string.IsNullOrEmpty(o.RootPath), "Workspace.RootPath must not be empty")
                 .Validate(o => o.AllowedCommands.Count > 0, "Workspace.AllowedCommands must not be empty")
+                .ValidateOnStart();
+
+            // Step-50: the workspace-manager side of the workspace config (RootPath only) was
+            // carved into its own record so the git/workspace layer does not see the sandbox-only
+            // AllowedCommands allowlist. Bound from the SAME Workspace section (RootPath is a scalar
+            // shared with the sandbox's WorkspaceOptions.RootPath — no double-append).
+            builder.Services
+                .AddOptions<WorkspaceRootOptions>()
+                .Bind(builder.Configuration.GetSection("Workspace"))
+                .Validate(o => !string.IsNullOrEmpty(o.RootPath), "Workspace.RootPath must not be empty")
                 .ValidateOnStart();
 
             // The deny/allow lists live solely in appsettings.json (Step-41 — the records
