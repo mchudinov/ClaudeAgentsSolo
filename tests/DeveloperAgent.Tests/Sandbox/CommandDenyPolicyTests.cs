@@ -4,7 +4,7 @@ namespace DeveloperAgent.Tests.Sandbox;
 
 /// <summary>
 /// Tests for <see cref="CommandDenyPolicy"/>. The policy is consulted by the
-/// <see cref="DeveloperAgent.Workspace.CommandSandbox"/> BEFORE the allowlist —
+/// <see cref="CommandSandbox"/> BEFORE the allowlist —
 /// a deny hit short-circuits and overrides any matching allow entry.
 /// </summary>
 public sealed class CommandDenyPolicyTests
