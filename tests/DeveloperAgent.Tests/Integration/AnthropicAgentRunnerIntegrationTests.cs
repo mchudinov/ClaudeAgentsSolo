@@ -68,9 +68,7 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
 
         var env = Substitute.For<IHostEnvironment>();
         env.ContentRootPath.Returns(_tempDir);
-        return new PersonaLoader(
-            Options.Create(new AgentOptions { PersonaPath = "personas/developer.md" }),
-            env);
+        return new PersonaLoader("personas/developer.md", env);
     }
 
     private AnthropicAgentRunner BuildRunner(
@@ -85,12 +83,13 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         // minimal ServiceCollection with the same named-client + AddStandardResilienceHandler
         // wiring Program.cs uses.
         var services = new ServiceCollection();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.Anthropic)
+        services.AddHttpClient(AnthropicHttpClients.ChatClient)
             .AddStandardResilienceHandler();
         var httpClientFactory = services.BuildServiceProvider()
             .GetRequiredService<IHttpClientFactory>();
 
-        var chatClientFactory = new AnthropicChatClientFactory(secrets, httpClientFactory);
+        var chatClientFactory = new AnthropicChatClientFactory(
+            new SecretsBundleAnthropicApiKeyProvider(secrets), httpClientFactory);
 
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {

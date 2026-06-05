@@ -20,8 +20,9 @@ namespace DeveloperAgent.Agent;
 /// </summary>
 public sealed class AgentRunState
 {
-    /// <summary>Number of model turns (request/response cycles) consumed so far.</summary>
-    public int TurnsUsed { get; set; }
+    // Model-turn counting moved to Agent.Runtime.RunCounters (Step-47): TurnCountingChatClient
+    // increments a RunCounters the runner owns separately, so this policy DTO no longer carries
+    // a TurnsUsed field. Local tool-call counting stays here (the host's MafToolAdapter owns it).
 
     /// <summary>
     /// Total invocations of <em>local</em> tools (the in-process <see cref="ITool"/> adapters)

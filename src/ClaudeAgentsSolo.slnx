@@ -2,6 +2,7 @@
   <Project Path="Agent.GitHub/Agent.GitHub.csproj" />
   <Project Path="Agent.Mcp/Agent.Mcp.csproj" />
   <Project Path="Agent.Memory/Agent.Memory.csproj" />
+  <Project Path="Agent.Runtime/Agent.Runtime.csproj" />
   <Project Path="Agent.Workflow/Agent.Workflow.csproj" />
   <Project Path="Library/Library.csproj" />
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
@@ -10,6 +11,7 @@
   <Project Path="../tests/Agent.GitHub.Tests/Agent.GitHub.Tests.csproj" />
   <Project Path="../tests/Agent.Mcp.Tests/Agent.Mcp.Tests.csproj" />
   <Project Path="../tests/Agent.Memory.Tests/Agent.Memory.Tests.csproj" />
+  <Project Path="../tests/Agent.Runtime.Tests/Agent.Runtime.Tests.csproj" />
   <Project Path="../tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
   <Project Path="../tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
 </Solution>

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Agent-neutral Anthropic chat-client transport, a turn/tool-call cap decorator, and a
+         markdown persona loader for any MAF agent. No GitHub, memory, or developer-lifecycle
+         coupling. Abstraction packages are declared explicitly because they appear in this
+         library's public surface (IChatClient, IServiceCollection, IHttpClientBuilder,
+         IHostEnvironment, AnthropicClient).
+         Anthropic is pinned to 12.24.1 (>= 12.18.0): older builds were compiled against
+         Microsoft.Extensions.AI.Abstractions 10.4.0 where WebSearchToolResultContent exposed
+         `Results`; 10.5.x renamed it to `Outputs`, so older Anthropic throws MissingMethodException
+         against the 10.5.x the rest of the graph forces. Do not lower this floor. The Anthropic
+         package also supplies the `AsIChatClient` extension (AnthropicClientExtensions.AsIChatClient)
+         the factory uses — this library produces a raw IChatClient, so it does NOT reference
+         Microsoft.Agents.AI.Anthropic (that MAF agent-abstraction layer lives in the host). -->
+    <PackageReference Include="Anthropic" Version="12.24.1" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.5.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>

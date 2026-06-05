@@ -5,7 +5,6 @@ using DeveloperAgent.Configuration;
 using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
-using DeveloperAgent.Resilience;
 using DeveloperAgent.Sandbox;
 using DeveloperAgent.Observability;
 using Dapr.Client;
@@ -195,10 +194,16 @@ public class Program
             var httpResilience = new HttpResilienceOptions();
             builder.Configuration.GetSection("HttpResilience").Bind(httpResilience);
 
-            builder.Services
-                .AddHttpClient(HttpClientNames.Anthropic)
+            // The Anthropic chat-client transport (IAgentChatClientFactory) and its named HttpClient
+            // ("anthropic") are registered by the Agent.Runtime library's AddAgentRuntimeServices.
+            // The host supplies: (a) the API key via IAnthropicApiKeyProvider (so only the key, never
+            // the GitHub token, reaches the runtime layer); and (b) the egress filter
+            // (HostAllowlistHandler) + standard resilience pipeline composed onto the named client
+            // through the callback — mirroring the GitHub registration below.
+            builder.Services.AddSingleton<IAnthropicApiKeyProvider, SecretsBundleAnthropicApiKeyProvider>();
+            builder.Services.AddAgentRuntimeServices(http => http
                 .AddHttpMessageHandler<HostAllowlistHandler>()
-                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience));
+                .AddStandardResilienceHandler(o => HttpResilienceConfigurator.Apply(o, httpResilience)));
 
             // ── GitHub service ────────────────────────────────────────────────────
             // The agent-neutral GitHub Projects client, its Octokit transports, and the two named
@@ -244,11 +249,13 @@ public class Program
             builder.Services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
 
             // ── Agent ─────────────────────────────────────────────────────────────
-            // PersonaLoader throws at construction if persona file is missing or empty.
-            // AnthropicChatClientFactory resolves the API key lazily (on first Create) so
-            // an unconfigured dotnet run does not crash.
-            builder.Services.AddSingleton<PersonaLoader>();
-            builder.Services.AddSingleton<IAgentChatClientFactory, AnthropicChatClientFactory>();
+            // PersonaLoader throws at construction if the persona file is missing or empty.
+            // AddDeveloperPersona binds AgentOptions.PersonaPath into the Agent.Runtime PersonaLoader
+            // (the host-side "thin DI wrapper" for the library's string-ctor). The
+            // IAgentChatClientFactory (AnthropicChatClientFactory) was registered above by
+            // AddAgentRuntimeServices; it resolves the API key lazily (on first Create) so an
+            // unconfigured dotnet run does not crash.
+            builder.Services.AddDeveloperPersona();
             builder.Services.AddSingleton<ITool, ReadFileTool>();
             builder.Services.AddSingleton<ITool, WriteFileTool>();
             builder.Services.AddSingleton<ITool, EditFileTool>();

@@ -1,11 +1,9 @@
-using DeveloperAgent.Agent;
-using DeveloperAgent.Configuration;
+using Agent.Runtime;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Agent;
+namespace Agent.Runtime.Tests;
 
-/// <summary>Unit tests for <see cref="PersonaLoader"/>.</summary>
+/// <summary>Unit tests for <see cref="PersonaLoader"/> (the string-ctor markdown loader).</summary>
 public sealed class PersonaLoaderTests : IDisposable
 {
     private readonly string _tempRoot;
@@ -21,31 +19,23 @@ public sealed class PersonaLoaderTests : IDisposable
         try { Directory.Delete(_tempRoot, recursive: true); } catch { /* best-effort cleanup */ }
     }
 
-    private IOptions<AgentOptions> Options(string personaPath) =>
-        Microsoft.Extensions.Options.Options.Create(new AgentOptions { PersonaPath = personaPath });
-
-    private IHostEnvironment Env() =>
-        CreateEnv(_tempRoot);
-
-    private static IHostEnvironment CreateEnv(string contentRoot)
+    private IHostEnvironment Env()
     {
         var env = Substitute.For<IHostEnvironment>();
-        env.ContentRootPath.Returns(contentRoot);
+        env.ContentRootPath.Returns(_tempRoot);
         return env;
     }
 
     // ── happy path ───────────────────────────────────────────────────────────
 
     [Fact]
-    public void Persona_returns_file_content_when_file_exists()
+    public void Persona_returns_file_content_when_relative_file_exists_under_content_root()
     {
-        // Arrange: create personas/developer.md in temp root
         var personasDir = Path.Combine(_tempRoot, "personas");
         Directory.CreateDirectory(personasDir);
-        var personaFile = Path.Combine(personasDir, "developer.md");
-        File.WriteAllText(personaFile, "You are a senior .NET developer.");
+        File.WriteAllText(Path.Combine(personasDir, "developer.md"), "You are a senior .NET developer.");
 
-        var loader = new PersonaLoader(Options("personas/developer.md"), Env());
+        var loader = new PersonaLoader("personas/developer.md", Env());
 
         loader.Persona.Should().Be("You are a senior .NET developer.");
     }
@@ -53,11 +43,10 @@ public sealed class PersonaLoaderTests : IDisposable
     [Fact]
     public void Absolute_persona_path_is_used_as_is()
     {
-        // Arrange: create the file at an absolute path
         var file = Path.Combine(_tempRoot, "my-persona.md");
         File.WriteAllText(file, "Absolute path persona.");
 
-        var loader = new PersonaLoader(Options(file), Env());
+        var loader = new PersonaLoader(file, Env());
 
         loader.Persona.Should().Be("Absolute path persona.");
     }
@@ -67,10 +56,9 @@ public sealed class PersonaLoaderTests : IDisposable
     [Fact]
     public void Missing_file_throws_InvalidOperationException()
     {
-        var act = () => new PersonaLoader(Options("personas/missing.md"), Env());
+        var act = () => new PersonaLoader("personas/missing.md", Env());
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*not found*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not found*");
     }
 
     [Fact]
@@ -80,9 +68,8 @@ public sealed class PersonaLoaderTests : IDisposable
         Directory.CreateDirectory(personasDir);
         File.WriteAllText(Path.Combine(personasDir, "developer.md"), "   ");
 
-        var act = () => new PersonaLoader(Options("personas/developer.md"), Env());
+        var act = () => new PersonaLoader("personas/developer.md", Env());
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*empty*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*empty*");
     }
 }

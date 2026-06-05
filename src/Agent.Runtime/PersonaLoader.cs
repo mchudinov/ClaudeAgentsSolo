@@ -1,38 +1,27 @@
-using DeveloperAgent.Configuration;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Agent;
+namespace Agent.Runtime;
 
 /// <summary>
-/// Loads and caches the developer persona from <see cref="AgentOptions.PersonaPath"/> at construction time.
-/// Registered as a singleton in DI so the file is read exactly once at startup.
+/// Loads and caches a markdown persona (system prompt) from a configured path at construction time.
+/// Registered as a singleton so the file is read exactly once at startup; fails fast if the file is
+/// missing or empty — an agent cannot operate without a persona.
+/// <para>
+/// Agent-neutral: it takes the persona path as a plain string. A host binds that string from its own
+/// options type via a thin DI factory.
+/// </para>
 /// </summary>
 public sealed class PersonaLoader
 {
-    /// <summary>
-    /// The cached persona text.
-    /// </summary>
+    /// <summary>The cached persona text.</summary>
     public string Persona { get; }
 
     /// <summary>
-    /// Initialises the persona loader. Reads the persona file immediately.
-    /// </summary>
-    /// <param name="options">Agent options containing the persona path.</param>
-    /// <param name="env">Host environment providing <c>ContentRootPath</c>.</param>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the persona file is missing or empty — the agent cannot operate without a persona.
-    /// </exception>
-    public PersonaLoader(IOptions<AgentOptions> options, IHostEnvironment env)
-        : this(options.Value.PersonaPath, env)
-    {
-    }
-
-    /// <summary>
     /// Loads and caches the persona at <paramref name="personaPath"/> (relative to
-    /// <c>ContentRootPath</c> or rooted). Shared by the developer-persona ctor above and by
-    /// the reviewer persona loader so the file-resolution logic exists exactly once.
+    /// <c>ContentRootPath</c> or rooted).
     /// </summary>
+    /// <param name="personaPath">The configured persona file path (rooted, or relative to the content root).</param>
+    /// <param name="env">Host environment providing <c>ContentRootPath</c>.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when the persona file is missing or empty.
     /// </exception>

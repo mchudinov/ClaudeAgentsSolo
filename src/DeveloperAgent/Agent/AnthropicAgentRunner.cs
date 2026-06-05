@@ -61,6 +61,9 @@ public sealed class AnthropicAgentRunner : IAgentRunner
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, CancellationToken ct)
     {
         var session = new AgentRunState();
+        // Model-turn counting lives in a separate agent-neutral RunCounters (Agent.Runtime, Step-47):
+        // TurnCountingChatClient increments it; we read the final count back into the result below.
+        var counters = new RunCounters();
         var context = new ToolContext(session, request.Workspace, request.Item);
 
         // Scope-limit gate (LLD §P2-H): give this run a wall-clock budget. The linked
@@ -91,7 +94,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         // Build the chat client; wrap it with the turn-counting decorator BEFORE handing
         // it to ChatClientAgent (which itself wraps with FunctionInvokingChatClient).
         IChatClient innerChatClient = _chatClientFactory.Create(_options.Model);
-        IChatClient countingClient = new TurnCountingChatClient(innerChatClient, session, _scopeLimits.MaxModelTurns);
+        IChatClient countingClient = new TurnCountingChatClient(innerChatClient, counters, _scopeLimits.MaxModelTurns);
 
         var agentOptions = new ChatClientAgentOptions
         {
@@ -140,12 +143,12 @@ public sealed class AnthropicAgentRunner : IAgentRunner
 
             _logger.LogInformation(
                 "Agent completed: turns={Turns} toolCalls={ToolCalls}",
-                session.TurnsUsed, session.ToolCallsUsed);
+                counters.TurnsUsed, session.ToolCallsUsed);
 
             return new AgentRunResult(
                 AgentRunOutcome.Completed,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 null);
         }
@@ -155,31 +158,31 @@ public sealed class AnthropicAgentRunner : IAgentRunner
             // a CancelAfter on the linked CTS does NOT flip `ct`, so we must key on timeoutCts.
             _logger.LogWarning(
                 "Agent run exceeded MaxExecutionTime={Seconds}s after {Turns} turns",
-                _scopeLimits.MaxExecutionTimeSeconds, session.TurnsUsed);
+                _scopeLimits.MaxExecutionTimeSeconds, counters.TurnsUsed);
             return new AgentRunResult(
                 AgentRunOutcome.TimeLimitExceeded,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 $"Execution time limit of {_scopeLimits.MaxExecutionTimeSeconds}s exceeded.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            _logger.LogInformation("Agent run cancelled after {Turns} turns", session.TurnsUsed);
+            _logger.LogInformation("Agent run cancelled after {Turns} turns", counters.TurnsUsed);
             return new AgentRunResult(
                 AgentRunOutcome.Cancelled,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 "Run cancelled by caller.");
         }
         catch (Exception ex) when (UnwrapHardCap(ex) is { } hardCap)
         {
-            _logger.LogWarning("Hard cap reached: {Turns} turns", session.TurnsUsed);
+            _logger.LogWarning("Hard cap reached: {Turns} turns", counters.TurnsUsed);
             return new AgentRunResult(
                 AgentRunOutcome.HardCapReached,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 $"Hard cap of {hardCap.Cap} model turns reached.");
         }
@@ -189,7 +192,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
             return new AgentRunResult(
                 AgentRunOutcome.ToolCallLimitReached,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 $"Tool-call limit of {toolLimit.Cap} reached.");
         }
@@ -200,7 +203,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
             return new AgentRunResult(
                 AgentRunOutcome.SandboxViolation,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 $"Sandbox violation in tool '{toolName}': {SanitizeMessage(sandboxEx.Message)}");
         }
@@ -210,7 +213,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
             return new AgentRunResult(
                 AgentRunOutcome.ApiError,
                 session.CreatedPullRequest,
-                session.TurnsUsed,
+                counters.TurnsUsed,
                 session.ToolCallsUsed,
                 $"API error: {ex.Message}");
         }
