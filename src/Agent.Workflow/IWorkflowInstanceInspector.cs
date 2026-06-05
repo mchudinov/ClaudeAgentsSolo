@@ -1,6 +1,6 @@
 using Dapr.Workflow;
 
-namespace DeveloperAgent.Workflow;
+namespace Agent.Workflow;
 
 /// <summary>
 /// Disposition of a Dapr workflow instance under a given (deterministic) instance id, as it
@@ -30,9 +30,8 @@ public enum WorkflowInstanceDisposition
 /// Probes Dapr for the <see cref="WorkflowInstanceDisposition"/> of a workflow instance id.
 /// <para>
 /// This exists as a seam because <see cref="WorkflowState"/> has no public constructor and cannot
-/// be instantiated or mocked in unit tests. The schedule-conflict decision in
-/// <see cref="DeveloperAgent.Lifecycle.AgentLifecycleService"/> depends on this plain enum so that
-/// the decision logic stays fully unit-testable.
+/// be instantiated or mocked in unit tests. An agent's idempotent-scheduling decision depends on
+/// this plain enum so that the decision logic stays fully unit-testable.
 /// </para>
 /// </summary>
 public interface IWorkflowInstanceInspector
