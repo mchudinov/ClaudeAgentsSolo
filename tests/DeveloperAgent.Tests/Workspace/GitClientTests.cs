@@ -52,7 +52,6 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
 
         return new GitClient(
             sandbox,
-            workspaceOpts,
             githubOpts,
             scopeOpts,
             secrets,

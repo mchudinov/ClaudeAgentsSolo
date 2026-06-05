@@ -55,7 +55,6 @@ public sealed class GitClientIntegrationTests
 
         return new GitClient(
             sandbox,
-            workspaceOpts,
             githubOpts,
             scopeOpts,
             secrets,
