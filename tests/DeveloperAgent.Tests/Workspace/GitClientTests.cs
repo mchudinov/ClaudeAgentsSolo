@@ -28,7 +28,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
     /// Creates a fresh <see cref="GitClient"/> backed by a real <see cref="CommandSandbox"/>
     /// that uses the default workspace root = the fixture's temp dir.
     /// </summary>
-    private GitClient BuildClient(string workspaceRoot, ScopeLimitOptions? scopeLimits = null)
+    private GitClient BuildClient(string workspaceRoot, DiffScopeLimitOptions? scopeLimits = null)
     {
         var workspaceOpts = Options.Create(new WorkspaceOptions
         {
@@ -36,7 +36,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
             AllowedCommands = ProductionSandboxConfig.AllowedCommands,
         });
         var githubOpts = Options.Create(new GitHubOptions());
-        var scopeOpts = Options.Create(scopeLimits ?? new ScopeLimitOptions());
+        var scopeOpts = Options.Create(scopeLimits ?? new DiffScopeLimitOptions());
         var secrets = new SecretsBundle("", "");
         var sandboxOpts = Options.Create(new SandboxOptions
         {
@@ -339,7 +339,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
     public async Task PushAsync_refuses_when_changed_files_exceed_limit()
     {
         var (_, repoRoot, ws) = CreateFreshClone();
-        var client = BuildClient(_fixture.TempDir, new ScopeLimitOptions { MaxChangedFiles = 1 });
+        var client = BuildClient(_fixture.TempDir, new DiffScopeLimitOptions { MaxChangedFiles = 1 });
 
         await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
         await File.WriteAllTextAsync(Path.Combine(repoRoot, "a.txt"), "a\n");
@@ -361,7 +361,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
     {
         var (_, repoRoot, ws) = CreateFreshClone();
         var client = BuildClient(_fixture.TempDir,
-            new ScopeLimitOptions { MaxChangedFiles = 100, MaxChangedLines = 2 });
+            new DiffScopeLimitOptions { MaxChangedFiles = 100, MaxChangedLines = 2 });
 
         await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
         await File.WriteAllTextAsync(Path.Combine(repoRoot, "a.txt"), "l1\nl2\nl3\nl4\n");
@@ -382,7 +382,7 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         // that shares the same TempRepoFixture upstream.
         var ws = ws0 with { BranchName = "agent/within-limits-" + Guid.NewGuid().ToString("N")[..8] };
         var client = BuildClient(_fixture.TempDir,
-            new ScopeLimitOptions { MaxChangedFiles = 10, MaxChangedLines = 100 });
+            new DiffScopeLimitOptions { MaxChangedFiles = 10, MaxChangedLines = 100 });
 
         await client.CheckoutNewBranchAsync(ws, CancellationToken.None);
         await File.WriteAllTextAsync(Path.Combine(repoRoot, "newfile.txt"), "hello\n");

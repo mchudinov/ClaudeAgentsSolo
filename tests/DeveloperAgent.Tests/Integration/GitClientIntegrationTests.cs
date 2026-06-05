@@ -47,7 +47,7 @@ public sealed class GitClientIntegrationTests
 
         // Generous scope limits so the integration push path is not blocked by the
         // Step-21 (P2-H) changed-file / changed-line gate.
-        var scopeOpts = Options.Create(new ScopeLimitOptions
+        var scopeOpts = Options.Create(new DiffScopeLimitOptions
         {
             MaxChangedFiles = 10_000,
             MaxChangedLines = 1_000_000,

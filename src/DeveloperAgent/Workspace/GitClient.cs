@@ -17,7 +17,7 @@ public sealed class GitClient : IGitClient
     private readonly ICommandSandbox _sandbox;
     private readonly IOptions<WorkspaceOptions> _workspaceOptions;
     private readonly IOptions<GitHubOptions> _githubOptions;
-    private readonly ScopeLimitOptions _scopeLimits;
+    private readonly DiffScopeLimitOptions _scopeLimits;
     private readonly SecretsBundle _secrets;
     private readonly ILogger<GitClient> _logger;
 
@@ -26,7 +26,7 @@ public sealed class GitClient : IGitClient
         ICommandSandbox sandbox,
         IOptions<WorkspaceOptions> workspaceOptions,
         IOptions<GitHubOptions> githubOptions,
-        IOptions<ScopeLimitOptions> scopeLimits,
+        IOptions<DiffScopeLimitOptions> scopeLimits,
         SecretsBundle secrets,
         ILogger<GitClient> logger)
     {

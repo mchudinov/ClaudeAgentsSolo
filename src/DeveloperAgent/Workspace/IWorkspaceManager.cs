@@ -3,7 +3,7 @@ namespace DeveloperAgent.Workspace;
 /// <summary>
 /// Creates and destroys per-task workspace directories.
 /// Each task receives an isolated directory under
-/// <see cref="global::Agent.Sandbox.WorkspaceOptions.RootPath"/>.
+/// <see cref="DeveloperAgent.Configuration.WorkspaceRootOptions.RootPath"/>.
 /// </summary>
 public interface IWorkspaceManager
 {

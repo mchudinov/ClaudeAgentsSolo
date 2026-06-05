@@ -4,23 +4,14 @@ namespace DeveloperAgent.Configuration;
 /// Config-driven scope-limit policy for a single task (LLD §P2-H). Bound from the
 /// <c>ScopeLimits</c> configuration section. Every limit is a hard cap; on breach
 /// the agent halts and surfaces the breach (comment + halt) rather than proceeding.
+/// <para>
+/// The pre-push diff-scope caps (<c>MaxChangedFiles</c>/<c>MaxChangedLines</c>) were carved
+/// out into <see cref="DiffScopeLimitOptions"/> in Step-50; they still bind from this same
+/// <c>ScopeLimits</c> section. This record retains the run/PR-policy limits.
+/// </para>
 /// </summary>
 public sealed record ScopeLimitOptions
 {
-    /// <summary>
-    /// Maximum number of changed files (relative to the default branch) permitted
-    /// before a push. Checked via <c>git diff --numstat</c> in
-    /// <see cref="DeveloperAgent.Workspace.GitClient.PushAsync"/> prior to pushing.
-    /// </summary>
-    public int MaxChangedFiles { get; init; } = 50;
-
-    /// <summary>
-    /// Maximum number of changed lines (added + deleted, relative to the default
-    /// branch) permitted before a push. Checked via <c>git diff --numstat</c>.
-    /// Binary files contribute zero lines (numstat emits <c>-</c> for them).
-    /// </summary>
-    public int MaxChangedLines { get; init; } = 2_000;
-
     /// <summary>
     /// Per-agent-run wall-clock budget (seconds). Enforced in
     /// <see cref="DeveloperAgent.Agent.AnthropicAgentRunner"/> via a linked

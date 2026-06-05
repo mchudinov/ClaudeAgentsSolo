@@ -3,10 +3,10 @@ namespace DeveloperAgent.Workspace;
 /// <summary>Identifies which scope limit (LLD §P2-H) was breached.</summary>
 public enum ScopeLimit
 {
-    /// <summary><c>ScopeLimitOptions.MaxChangedFiles</c> — changed-file cap before push.</summary>
+    /// <summary><c>DiffScopeLimitOptions.MaxChangedFiles</c> — changed-file cap before push.</summary>
     MaxChangedFiles,
 
-    /// <summary><c>ScopeLimitOptions.MaxChangedLines</c> — changed-line cap before push.</summary>
+    /// <summary><c>DiffScopeLimitOptions.MaxChangedLines</c> — changed-line cap before push.</summary>
     MaxChangedLines,
 
     /// <summary><c>ScopeLimitOptions.MaxPRChangedFiles</c> — composite PR-size file cap.</summary>

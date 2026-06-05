@@ -44,7 +44,7 @@ public sealed class WorkspaceManagerTests : IDisposable
         _git.ResolveDefaultBranchAsync(Arg.Any<TaskWorkspace>(), Arg.Any<CancellationToken>())
             .Returns(defaultBranch ?? "main");
 
-        var workspaceOpts = Options.Create(new WorkspaceOptions { RootPath = _rootPath });
+        var workspaceOpts = Options.Create(new WorkspaceRootOptions { RootPath = _rootPath });
         var githubOpts = Options.Create(new GitHubOptions
         {
             Repository = new RepositoryOptions { Url = repoUrl ?? "https://github.com/test/repo" },
