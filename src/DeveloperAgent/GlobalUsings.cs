@@ -13,3 +13,9 @@ global using Agent.Mcp;
 // IAgentSessionStore, AgentSession, …) unqualified — also sidestepping the Agent.Memory vs
 // DeveloperAgent.Agent namespace collision the same way Agent.GitHub does.
 global using Agent.Memory;
+// The agent-neutral Anthropic chat-client transport, turn/tool-call cap decorator, and persona
+// loader were extracted to the Agent.Runtime library (Step-47). A global using surfaces its types
+// (IAgentChatClientFactory, TurnCountingChatClient, RunCounters, HardCapReachedException,
+// ToolCallLimitReachedException, PersonaLoader, AnthropicHttpClients, IAnthropicApiKeyProvider, …)
+// unqualified and sidesteps the Agent.Runtime vs DeveloperAgent.Agent namespace collision.
+global using Agent.Runtime;

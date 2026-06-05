@@ -72,7 +72,7 @@ public sealed class ReviewerAgentIntegrationTests
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
         services.AddHttpClient(GitHubHttpClients.GraphQL)
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
-        services.AddHttpClient(DeveloperAgent.Resilience.HttpClientNames.Anthropic)
+        services.AddHttpClient(AnthropicHttpClients.ChatClient)
             .AddHttpMessageHandler<HostAllowlistHandler>().AddStandardResilienceHandler();
         var provider = services.BuildServiceProvider();
         var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
@@ -85,7 +85,8 @@ public sealed class ReviewerAgentIntegrationTests
         var client = new GitHubProjectsClient(graphQL, rest, githubOptions, NullLogger<GitHubProjectsClient>.Instance);
         var gitHub = new GitHubProjectService(client, Options.Create(new ProjectStateNames()));
 
-        var chatClientFactory = new AnthropicChatClientFactory(secrets, httpClientFactory);
+        var chatClientFactory = new AnthropicChatClientFactory(
+            new SecretsBundleAnthropicApiKeyProvider(secrets), httpClientFactory);
 
         // Load the real reviewer persona from the repo's personas directory.
         var env = Substitute.For<IHostEnvironment>();

@@ -1,14 +1,14 @@
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Agent;
+namespace Agent.Runtime;
 
 /// <summary>
 /// Creates a fresh <see cref="IChatClient"/> for each agent run.
 /// <para>
 /// A factory rather than a singleton because the chat client wraps Anthropic SDK state
-/// (HTTP pipeline, retries, etc.) that the runner wraps further with per-run decorators
+/// (HTTP pipeline, retries, etc.) that a runner wraps further with per-run decorators
 /// (<see cref="TurnCountingChatClient"/>). Production resolves this to an Anthropic-backed
-/// implementation; unit tests substitute it to inject a NSubstitute <see cref="IChatClient"/>.
+/// implementation; unit tests substitute it to inject a fake <see cref="IChatClient"/>.
 /// </para>
 /// </summary>
 public interface IAgentChatClientFactory

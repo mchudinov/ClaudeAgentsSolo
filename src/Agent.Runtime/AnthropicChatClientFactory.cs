@@ -1,9 +1,7 @@
 using Anthropic;
-using DeveloperAgent.Configuration;
-using DeveloperAgent.Resilience;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Agent;
+namespace Agent.Runtime;
 
 /// <summary>
 /// Production <see cref="IAgentChatClientFactory"/> backed by the official Anthropic .NET SDK
@@ -12,24 +10,23 @@ namespace DeveloperAgent.Agent;
 /// </summary>
 /// <remarks>
 /// The underlying <see cref="HttpClient"/> is obtained from <see cref="IHttpClientFactory"/>
-/// under the <see cref="HttpClientNames.Anthropic"/> name so the standard resilience
-/// pipeline (timeouts + retries with exponential back-off + circuit breaker) registered
-/// in <c>Program.cs</c> is in effect on every Anthropic request. Step-26 (P2-K) replaced
-/// the previous handler-less <see cref="AnthropicClient"/> construction with this factory
-/// path so retries are governed by <c>Microsoft.Extensions.Http.Resilience</c> instead of
-/// ad-hoc logic.
+/// under the <see cref="AnthropicHttpClients.ChatClient"/> name so whatever resilience pipeline
+/// (timeouts + retries with exponential back-off + circuit breaker) and egress filter the host
+/// composed onto that named client via <see cref="AgentRuntimeServiceCollectionExtensions.AddAgentRuntimeServices"/>
+/// is in effect on every Anthropic request. The API key is read lazily on first
+/// <see cref="Create"/> (not in the ctor) so an unconfigured process still boots.
 /// </remarks>
 public sealed class AnthropicChatClientFactory : IAgentChatClientFactory
 {
     private const int DefaultMaxTokens = 32_000;
 
-    private readonly SecretsBundle _secrets;
+    private readonly IAnthropicApiKeyProvider _apiKeyProvider;
     private readonly IHttpClientFactory _httpClientFactory;
     private AnthropicClient? _client;
 
-    public AnthropicChatClientFactory(SecretsBundle secrets, IHttpClientFactory httpClientFactory)
+    public AnthropicChatClientFactory(IAnthropicApiKeyProvider apiKeyProvider, IHttpClientFactory httpClientFactory)
     {
-        _secrets = secrets;
+        _apiKeyProvider = apiKeyProvider;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -42,10 +39,10 @@ public sealed class AnthropicChatClientFactory : IAgentChatClientFactory
         // for the process lifetime, which is correct.
         if (_client is null)
         {
-            var http = _httpClientFactory.CreateClient(HttpClientNames.Anthropic);
+            var http = _httpClientFactory.CreateClient(AnthropicHttpClients.ChatClient);
             _client = new AnthropicClient
             {
-                ApiKey = _secrets.AnthropicApiKey,
+                ApiKey = _apiKeyProvider.GetApiKey(),
                 HttpClient = http,
             };
         }

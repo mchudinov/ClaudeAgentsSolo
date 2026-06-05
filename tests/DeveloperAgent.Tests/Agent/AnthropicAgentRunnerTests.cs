@@ -48,7 +48,7 @@ public sealed class AnthropicAgentRunnerTests
         File.WriteAllText(Path.Combine(personasDir, "developer.md"), "You are a developer.");
         var env = Substitute.For<Microsoft.Extensions.Hosting.IHostEnvironment>();
         env.ContentRootPath.Returns(tempRoot);
-        return new PersonaLoader(Options.Create(new AgentOptions { PersonaPath = "personas/developer.md" }), env);
+        return new PersonaLoader("personas/developer.md", env);
     }
 
     private sealed class StubChatClientFactory : IAgentChatClientFactory
