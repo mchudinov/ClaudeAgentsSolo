@@ -2,6 +2,19 @@ using CommunityToolkit.Aspire.Hosting.Dapr;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+var serviceBus = builder.AddAzureServiceBus("servicebus")
+    .RunAsEmulator(emulator =>
+    {
+        emulator.WithHostPort(55555);
+        emulator.WithLifetime(ContainerLifetime.Persistent);
+    });
+
+var topicprcreated = serviceBus.AddServiceBusTopic("topicprcreated");
+topicprcreated.AddServiceBusSubscription("subsprcreated");
+
+// Add the Service Bus Emulator UI
+builder.AddAsbEmulatorUi("servicebus-ui", serviceBus);
+
 // Reuse the already-running dapr_redis (dapr init) on localhost:6379. The
 // state-store component is declared in agent-state-store.yaml (actorStateStore=true,
 // required because Dapr Workflow runs on the Dapr actor runtime), so Aspire does
