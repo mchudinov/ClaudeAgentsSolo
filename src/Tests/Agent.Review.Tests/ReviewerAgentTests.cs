@@ -228,4 +228,33 @@ public sealed class ReviewerAgentTests
         await gitHub.Received(1).SubmitReviewAsync(
             PrNumber, ReviewVerdict.RequestChanges, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task Empty_required_sections_skips_the_section_check_and_reaches_the_model()
+    {
+        // A body with NO section headers — would normally fail the missing-section check.
+        const string plainBody = "just a plain description, no sections";
+        var ctx = new PullRequestReviewContext(PrNumber, plainBody, ChangedFiles: 1, ChangedLines: 10, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+
+        // Construct inline with RequiredPrBodySections = [] to exercise the skip path.
+        var reviewer = new ReviewerAgent(
+            gitHub,
+            new StubChatClientFactory(ScriptedChatClient("approve", "ok")),
+            MakePersonaLoader(),
+            Options.Create(new ReviewerOptions
+            {
+                MaxDiffFiles = 50,
+                MaxDiffLines = 2_000,
+                RequiredPrBodySections = [],
+            }),
+            NullLogger<ReviewerAgent>.Instance);
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        // The model was reached (section check was skipped, not failed).
+        result.Verdict.Should().Be(ReviewVerdict.Approve);
+        result.UsedModel.Should().BeTrue(
+            because: "an empty RequiredPrBodySections must skip the deterministic section check entirely");
+    }
 }
