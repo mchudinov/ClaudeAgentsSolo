@@ -3,6 +3,7 @@
     <Project Path="AgenticTools/Agent.GitHub/Agent.GitHub.csproj" />
     <Project Path="AgenticTools/Agent.Mcp/Agent.Mcp.csproj" />
     <Project Path="AgenticTools/Agent.Memory/Agent.Memory.csproj" />
+    <Project Path="AgenticTools/Agent.Review/Agent.Review.csproj" />
     <Project Path="AgenticTools/Agent.Runtime/Agent.Runtime.csproj" />
     <Project Path="AgenticTools/Agent.Sandbox/Agent.Sandbox.csproj" />
     <Project Path="AgenticTools/Agent.Tools/Agent.Tools.csproj" />
