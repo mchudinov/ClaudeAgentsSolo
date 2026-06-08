@@ -38,6 +38,8 @@ builder.AddProject<Projects.DeveloperAgent>("DeveloperAgent")
         .WithReference(stateStore)
         .WithReference(resiliency));
 
+builder.AddProject<Projects.ReviewerAgent>("ReviewerAgent");
+
 builder.AddContainer("redisinsight", "redis/redisinsight")
     .WithImageTag("latest")
     .WithHttpEndpoint(port: 5540, targetPort: 5540, name: "http")

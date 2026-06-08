@@ -56,4 +56,14 @@ public interface IGitHubProjectsClient
 
     /// <summary>Returns true if the configured GitHub Project exists and is accessible on GitHub.</summary>
     Task<bool> ProjectExistsAsync(CancellationToken ct);
+
+    /// <summary>Lists the configured repository's open pull requests (repo-centric; no project board needed).</summary>
+    Task<IReadOnlyList<OpenPullRequest>> ListOpenPullRequestsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Returns the distinct head-commit SHAs that <paramref name="reviewerLogin"/> has already
+    /// submitted a review against on the given PR. A reviewer skips a PR whose current head SHA is
+    /// in this set (idempotency without local state).
+    /// </summary>
+    Task<IReadOnlyList<string>> GetReviewedHeadShasAsync(int pullRequestNumber, string reviewerLogin, CancellationToken ct);
 }

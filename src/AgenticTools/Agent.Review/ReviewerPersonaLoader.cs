@@ -1,14 +1,13 @@
-using DeveloperAgent.Configuration;
+using Agent.Runtime;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Agent;
+namespace Agent.Review;
 
 /// <summary>
 /// Loads and caches the reviewer persona from <see cref="ReviewerOptions.PersonaPath"/> at
-/// construction time. A distinct DI type from <see cref="PersonaLoader"/> (which loads the
-/// developer persona) so both can be registered as singletons. Delegates file resolution to
-/// <see cref="PersonaLoader"/> so the resolution logic lives in one place.
+/// construction. Delegates file resolution to the Agent.Runtime <see cref="PersonaLoader"/> so
+/// the path-resolution logic lives in one place. A distinct DI type so it can be a singleton.
 /// </summary>
 public sealed class ReviewerPersonaLoader
 {

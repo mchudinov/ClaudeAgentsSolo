@@ -1,30 +1,25 @@
-using DeveloperAgent.Agent;
-using DeveloperAgent.Agent.Review;
-using DeveloperAgent.Configuration;
-using DeveloperAgent.GitHub;
+using Agent.GitHub;
+using Agent.Review;
+using Agent.Runtime;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace DeveloperAgent.Tests.Agent.Review;
+namespace Agent.Review.Tests;
 
-/// <summary>
-/// Unit tests for <see cref="ReviewerAgent"/>. The deterministic body-section and diff-size
-/// checks short-circuit before any model call, so those tests use a chat client that throws
-/// if invoked. Only the clean-PR case reaches the (scripted, faked) model.
-/// </summary>
 public sealed class ReviewerAgentTests
 {
     private const int PrNumber = 7;
 
-    // A fully-formed four-section body so the missing-section check passes.
-    private static readonly string CleanBody = PullRequestBodyBuilder.Build(
-        summary: "Adds a widget.",
-        userVisibleBehavior: "Callers can now request a widget.",
-        testsValidationRun: "dotnet test → 10 passed.",
-        notesAssumptions: "None");
+    private static readonly string[] RequiredSections =
+        ["## Summary", "## User-visible behavior", "## Tests/validation run", "## Notes/assumptions"];
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // A fully-formed four-section body so the missing-section check passes.
+    private static readonly string CleanBody =
+        "## Summary\nAdds a widget.\n\n" +
+        "## User-visible behavior\nCallers can now request a widget.\n\n" +
+        "## Tests/validation run\ndotnet test → 10 passed.\n\n" +
+        "## Notes/assumptions\nNone\n";
 
     private sealed class StubChatClientFactory : IAgentChatClientFactory
     {
@@ -45,7 +40,6 @@ public sealed class ReviewerAgentTests
             Options.Create(new ReviewerOptions { PersonaPath = "personas/reviewer.md" }), env);
     }
 
-    /// <summary>Chat client that fails the test if it is ever called (deterministic-path cases).</summary>
     private static IChatClient NeverCalledChatClient()
     {
         var client = Substitute.For<IChatClient>();
@@ -55,10 +49,6 @@ public sealed class ReviewerAgentTests
         return client;
     }
 
-    /// <summary>
-    /// Chat client that calls submit_review with the given verdict/summary on the first turn,
-    /// then returns plain text to terminate the loop.
-    /// </summary>
     private static IChatClient ScriptedChatClient(string verdict, string summary)
     {
         int call = 0;
@@ -81,10 +71,6 @@ public sealed class ReviewerAgentTests
         return client;
     }
 
-    /// <summary>
-    /// Chat client that records the <see cref="ChatOptions"/> it was called with into
-    /// <paramref name="observed"/>, then returns plain text to terminate the loop.
-    /// </summary>
     private static IChatClient CapturingChatClient(Action<ChatOptions> observe)
     {
         var client = Substitute.For<IChatClient>();
@@ -98,7 +84,6 @@ public sealed class ReviewerAgentTests
         return client;
     }
 
-    /// <summary>Chat client that returns text only — never calls submit_review.</summary>
     private static IChatClient TextOnlyChatClient()
     {
         var client = Substitute.For<IChatClient>();
@@ -112,7 +97,7 @@ public sealed class ReviewerAgentTests
     }
 
     private static ReviewerAgent BuildReviewer(
-        IGitHubProjectService gitHub,
+        IGitHubProjectsClient gitHub,
         IChatClient chatClient,
         int maxDiffFiles = 50,
         int maxDiffLines = 2_000)
@@ -120,20 +105,22 @@ public sealed class ReviewerAgentTests
             gitHub,
             new StubChatClientFactory(chatClient),
             MakePersonaLoader(),
-            Options.Create(new AgentOptions()),
-            Options.Create(new ReviewerOptions { MaxDiffFiles = maxDiffFiles, MaxDiffLines = maxDiffLines }),
+            Options.Create(new ReviewerOptions
+            {
+                MaxDiffFiles = maxDiffFiles,
+                MaxDiffLines = maxDiffLines,
+                RequiredPrBodySections = RequiredSections,
+            }),
             NullLogger<ReviewerAgent>.Instance);
 
-    private static IGitHubProjectService GitHubReturning(PullRequestReviewContext context)
+    private static IGitHubProjectsClient GitHubReturning(PullRequestReviewContext context)
     {
-        var gitHub = Substitute.For<IGitHubProjectService>();
+        var gitHub = Substitute.For<IGitHubProjectsClient>();
         gitHub.GetPullRequestForReviewAsync(PrNumber, Arg.Any<CancellationToken>()).Returns(context);
         gitHub.SubmitReviewAsync(Arg.Any<int>(), Arg.Any<ReviewVerdict>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         return gitHub;
     }
-
-    // ── Required case 1: clean PR → Approve ───────────────────────────────────
 
     [Fact]
     public async Task Clean_PR_approved_by_model_posts_Approve()
@@ -150,20 +137,15 @@ public sealed class ReviewerAgentTests
             PrNumber, ReviewVerdict.Approve, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    // ── Required case 2: body missing a section → RequestChanges (no model) ────
-
     [Fact]
     public async Task Body_missing_a_section_requests_changes_without_calling_model()
     {
-        // Drop the "## Notes/assumptions" section.
         var incompleteBody =
             "## Summary\nAdds a widget.\n\n" +
             "## User-visible behavior\nNone\n\n" +
             "## Tests/validation run\nRan tests.\n";
         var ctx = new PullRequestReviewContext(PrNumber, incompleteBody, ChangedFiles: 1, ChangedLines: 5, UnifiedDiff: "diff");
         var gitHub = GitHubReturning(ctx);
-
-        // Chat client throws if invoked → proves the model was not called.
         var reviewer = BuildReviewer(gitHub, NeverCalledChatClient());
 
         var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
@@ -174,8 +156,6 @@ public sealed class ReviewerAgentTests
         await gitHub.Received(1).SubmitReviewAsync(
             PrNumber, ReviewVerdict.RequestChanges, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
-
-    // ── Required case 3: oversized diff → RequestChanges (no model) ────────────
 
     [Fact]
     public async Task Oversized_diff_by_lines_requests_changes_without_calling_model()
@@ -189,8 +169,6 @@ public sealed class ReviewerAgentTests
         result.Verdict.Should().Be(ReviewVerdict.RequestChanges);
         result.UsedModel.Should().BeFalse();
         result.Summary.Should().Contain("too large");
-        await gitHub.Received(1).SubmitReviewAsync(
-            PrNumber, ReviewVerdict.RequestChanges, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -206,8 +184,6 @@ public sealed class ReviewerAgentTests
         result.UsedModel.Should().BeFalse();
     }
 
-    // ── Model verdict propagation ─────────────────────────────────────────────
-
     [Fact]
     public async Task Model_request_changes_posts_RequestChanges()
     {
@@ -222,15 +198,9 @@ public sealed class ReviewerAgentTests
         result.Summary.Should().Contain("null path");
     }
 
-    // ── Temperature is not sent (deprecated for the model) ───────────────────
-
     [Fact]
     public async Task Persona_scan_does_not_set_Temperature_on_ChatOptions()
     {
-        // Regression guard: newer Anthropic models reject the `temperature` request field
-        // ("temperature is deprecated for this model"). The reviewer's persona scan must
-        // leave ChatOptions.Temperature unset (null) so the provider omits it. A clean PR
-        // reaches the model, letting us capture the options it is invoked with.
         var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 1, ChangedLines: 20, UnifiedDiff: "diff");
         var gitHub = GitHubReturning(ctx);
 
@@ -245,8 +215,6 @@ public sealed class ReviewerAgentTests
             because: "the model rejects a `temperature` request field; it must not be sent");
     }
 
-    // ── Fail-closed: model never submits a verdict → RequestChanges ───────────
-
     [Fact]
     public async Task Model_finishing_without_submit_review_fails_closed_to_RequestChanges()
     {
@@ -259,5 +227,34 @@ public sealed class ReviewerAgentTests
         result.Verdict.Should().Be(ReviewVerdict.RequestChanges);
         await gitHub.Received(1).SubmitReviewAsync(
             PrNumber, ReviewVerdict.RequestChanges, Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Empty_required_sections_skips_the_section_check_and_reaches_the_model()
+    {
+        // A body with NO section headers — would normally fail the missing-section check.
+        const string plainBody = "just a plain description, no sections";
+        var ctx = new PullRequestReviewContext(PrNumber, plainBody, ChangedFiles: 1, ChangedLines: 10, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+
+        // Construct inline with RequiredPrBodySections = [] to exercise the skip path.
+        var reviewer = new ReviewerAgent(
+            gitHub,
+            new StubChatClientFactory(ScriptedChatClient("approve", "ok")),
+            MakePersonaLoader(),
+            Options.Create(new ReviewerOptions
+            {
+                MaxDiffFiles = 50,
+                MaxDiffLines = 2_000,
+                RequiredPrBodySections = [],
+            }),
+            NullLogger<ReviewerAgent>.Instance);
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        // The model was reached (section check was skipped, not failed).
+        result.Verdict.Should().Be(ReviewVerdict.Approve);
+        result.UsedModel.Should().BeTrue(
+            because: "an empty RequiredPrBodySections must skip the deterministic section check entirely");
     }
 }

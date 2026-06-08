@@ -3,6 +3,7 @@
     <Project Path="AgenticTools/Agent.GitHub/Agent.GitHub.csproj" />
     <Project Path="AgenticTools/Agent.Mcp/Agent.Mcp.csproj" />
     <Project Path="AgenticTools/Agent.Memory/Agent.Memory.csproj" />
+    <Project Path="AgenticTools/Agent.Review/Agent.Review.csproj" />
     <Project Path="AgenticTools/Agent.Runtime/Agent.Runtime.csproj" />
     <Project Path="AgenticTools/Agent.Sandbox/Agent.Sandbox.csproj" />
     <Project Path="AgenticTools/Agent.Tools/Agent.Tools.csproj" />
@@ -13,15 +14,18 @@
     <Project Path="Tests/Agent.GitHub.Tests/Agent.GitHub.Tests.csproj" />
     <Project Path="Tests/Agent.Mcp.Tests/Agent.Mcp.Tests.csproj" />
     <Project Path="Tests/Agent.Memory.Tests/Agent.Memory.Tests.csproj" />
+    <Project Path="Tests/Agent.Review.Tests/Agent.Review.Tests.csproj" />
     <Project Path="Tests/Agent.Runtime.Tests/Agent.Runtime.Tests.csproj" />
     <Project Path="Tests/Agent.Sandbox.Tests/Agent.Sandbox.Tests.csproj" />
     <Project Path="Tests/Agent.Tools.Tests/Agent.Tools.Tests.csproj" />
     <Project Path="Tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
     <Project Path="Tests/Agent.Workspace.Tests/Agent.Workspace.Tests.csproj" />
     <Project Path="Tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
+    <Project Path="Tests/ReviewerAgent.Tests/ReviewerAgent.Tests.csproj" />
   </Folder>
   <Project Path="AppHost/AppHost.csproj" />
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
+  <Project Path="ReviewerAgent/ReviewerAgent.csproj" />
   <Project Path="Library/Library.csproj" />
   <Project Path="ServiceDefaults/ServiceDefaults.csproj" />
 </Solution>

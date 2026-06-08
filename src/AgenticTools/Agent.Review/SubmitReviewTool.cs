@@ -1,15 +1,13 @@
 using System.Text.Json;
-using DeveloperAgent.GitHub;
+using Agent.GitHub;
 using Microsoft.Extensions.AI;
 
-namespace DeveloperAgent.Agent.Review;
+namespace Agent.Review;
 
 /// <summary>
 /// The single tool exposed to the reviewer model during the persona-violation scan. The model
-/// calls it exactly once to record its verdict + summary; the recorded value is read back by
-/// <see cref="ReviewerAgent"/>, which owns the actual GitHub posting. This mirrors how the
-/// developer agent's <c>CreatePullRequestTool</c> records its result on run state rather than
-/// letting the model perform the side effect directly.
+/// calls it exactly once to record its verdict + summary; <see cref="ReviewerAgent"/> reads the
+/// recorded value back and owns the actual GitHub posting.
 /// </summary>
 internal sealed class SubmitReviewTool : AIFunction
 {
@@ -33,10 +31,7 @@ internal sealed class SubmitReviewTool : AIFunction
         }
         """).RootElement;
 
-    /// <summary>The verdict the model recorded, or null if the tool was never called.</summary>
     public ReviewVerdict? RecordedVerdict { get; private set; }
-
-    /// <summary>The summary the model recorded, or null if the tool was never called.</summary>
     public string? RecordedSummary { get; private set; }
 
     public override string Name => "submit_review";
