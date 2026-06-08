@@ -14,6 +14,7 @@
     <Project Path="Tests/Agent.GitHub.Tests/Agent.GitHub.Tests.csproj" />
     <Project Path="Tests/Agent.Mcp.Tests/Agent.Mcp.Tests.csproj" />
     <Project Path="Tests/Agent.Memory.Tests/Agent.Memory.Tests.csproj" />
+    <Project Path="Tests/Agent.Review.Tests/Agent.Review.Tests.csproj" />
     <Project Path="Tests/Agent.Runtime.Tests/Agent.Runtime.Tests.csproj" />
     <Project Path="Tests/Agent.Sandbox.Tests/Agent.Sandbox.Tests.csproj" />
     <Project Path="Tests/Agent.Tools.Tests/Agent.Tools.Tests.csproj" />
