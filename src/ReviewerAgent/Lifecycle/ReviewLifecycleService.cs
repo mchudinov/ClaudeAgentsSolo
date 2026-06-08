@@ -30,6 +30,16 @@ public sealed class ReviewLifecycleService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Idempotency keys on (PR, head SHA, ReviewerLogin). A blank login matches no review,
+        // so every sweep would re-review (and re-post on) every open PR. Warn loudly rather than
+        // silently spamming reviews — the operator must set Reviewer:ReviewerLogin to the bot account.
+        if (string.IsNullOrWhiteSpace(_options.ReviewerLogin))
+        {
+            _logger.LogWarning(
+                "Reviewer:ReviewerLogin is not configured. Idempotency is disabled: every poll will " +
+                "re-review and re-post on all open PRs. Set it to the GitHub login the token authenticates as.");
+        }
+
         using var timer = new PeriodicTimer(
             TimeSpan.FromSeconds(_options.PollIntervalSeconds), _timeProvider);
 
