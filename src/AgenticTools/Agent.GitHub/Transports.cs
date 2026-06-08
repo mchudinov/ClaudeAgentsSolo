@@ -23,10 +23,18 @@ internal sealed record RestPullRequestFile(
     int Deletions,
     string? Patch);
 
+internal sealed record RestOpenPullRequest(
+    int Number,
+    string HeadSha,
+    bool IsDraft,
+    string Author,
+    string HtmlUrl);
+
 internal sealed record RestPullRequestReview(
     long Id,
     string ReviewerLogin,
     string State,           // "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED"
+    string CommitId,        // head SHA the review was submitted against
     DateTimeOffset SubmittedAt);
 
 internal sealed record RestPullRequestReviewComment(
@@ -103,6 +111,9 @@ internal interface IRestTransport
 
     /// <summary>Returns true if the repository exists and is accessible; false on 404.</summary>
     Task<bool> RepositoryExistsAsync(string owner, string repo, CancellationToken ct);
+
+    /// <summary>Lists the repository's open pull requests (number, head SHA, draft flag, author).</summary>
+    Task<IReadOnlyList<RestOpenPullRequest>> ListOpenPullRequestsAsync(string owner, string repo, CancellationToken ct);
 }
 
 // ── Concrete implementations ──────────────────────────────────────────────────
@@ -307,7 +318,17 @@ internal sealed class OctokitRestTransport : IRestTransport
     {
         var reviews = await GetClient().PullRequest.Review.GetAll(owner, repo, number).ConfigureAwait(false);
         return reviews
-            .Select(r => new RestPullRequestReview(r.Id, r.User.Login, r.State.StringValue, r.SubmittedAt))
+            .Select(r => new RestPullRequestReview(r.Id, r.User.Login, r.State.StringValue, r.CommitId, r.SubmittedAt))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<RestOpenPullRequest>> ListOpenPullRequestsAsync(
+        string owner, string repo, CancellationToken ct)
+    {
+        var request = new PullRequestRequest { State = ItemStateFilter.Open };
+        var prs = await GetClient().PullRequest.GetAllForRepository(owner, repo, request).ConfigureAwait(false);
+        return prs
+            .Select(p => new RestOpenPullRequest(p.Number, p.Head.Sha, p.Draft, p.User.Login, p.HtmlUrl))
             .ToList();
     }
 
