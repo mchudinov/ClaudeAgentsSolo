@@ -21,9 +21,11 @@
     <Project Path="Tests/Agent.Workflow.Tests/Agent.Workflow.Tests.csproj" />
     <Project Path="Tests/Agent.Workspace.Tests/Agent.Workspace.Tests.csproj" />
     <Project Path="Tests/DeveloperAgent.Tests/DeveloperAgent.Tests.csproj" />
+    <Project Path="Tests/ReviewerAgent.Tests/ReviewerAgent.Tests.csproj" />
   </Folder>
   <Project Path="AppHost/AppHost.csproj" />
   <Project Path="DeveloperAgent/DeveloperAgent.csproj" />
+  <Project Path="ReviewerAgent/ReviewerAgent.csproj" />
   <Project Path="Library/Library.csproj" />
   <Project Path="ServiceDefaults/ServiceDefaults.csproj" />
 </Solution>
