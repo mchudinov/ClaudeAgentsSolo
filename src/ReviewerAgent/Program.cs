@@ -123,6 +123,19 @@ public partial class Program
                 endpoints = new[] { "/livez", "/uptime", "/info", "/review/{prNumber}", "/health", "/alive" }
             }));
 
+            app.MapPost("/review/{prNumber:int}", async (
+                int prNumber, IReviewerAgent reviewer, CancellationToken ct) =>
+            {
+                var result = await reviewer.ReviewAsync(prNumber, ct);
+                return Results.Json(new
+                {
+                    prNumber,
+                    verdict = result.Verdict.ToString(),
+                    usedModel = result.UsedModel,
+                    summary = result.Summary
+                });
+            });
+
             app.Run();
         }
         catch (Exception ex)
