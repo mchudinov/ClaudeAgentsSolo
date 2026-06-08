@@ -342,7 +342,7 @@ public sealed class GitHubProjectsClientTests
         rest.GetPullRequestReviewsAsync(Arg.Any<string>(), Arg.Any<string>(), 5, Arg.Any<CancellationToken>())
             .Returns(new List<RestPullRequestReview>
             {
-                new(1, "reviewer1", "APPROVED", DateTimeOffset.UtcNow)
+                new(1, "reviewer1", "APPROVED", "", DateTimeOffset.UtcNow)
             });
 
         rest.GetCheckRunsAsync(Arg.Any<string>(), Arg.Any<string>(), "sha-abc", Arg.Any<CancellationToken>())
@@ -403,8 +403,8 @@ public sealed class GitHubProjectsClientTests
         rest.GetPullRequestReviewsAsync(Arg.Any<string>(), Arg.Any<string>(), 7, Arg.Any<CancellationToken>())
             .Returns(new List<RestPullRequestReview>
             {
-                new(1, "reviewer1", "APPROVED", t.AddMinutes(-5)),
-                new(2, "reviewer1", "CHANGES_REQUESTED", t) // latest overrides
+                new(1, "reviewer1", "APPROVED", "", t.AddMinutes(-5)),
+                new(2, "reviewer1", "CHANGES_REQUESTED", "", t) // latest overrides
             });
 
         rest.GetCheckRunsAsync(Arg.Any<string>(), Arg.Any<string>(), "sha-xyz", Arg.Any<CancellationToken>())

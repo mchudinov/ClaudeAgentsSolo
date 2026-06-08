@@ -77,3 +77,16 @@ public sealed record PullRequestStatus(
     bool ChecksGreen,
     bool Merged,
     string HeadSha);
+
+/// <summary>An open pull request as surfaced for review scheduling.</summary>
+/// <param name="Number">PR number in the repository.</param>
+/// <param name="HeadSha">HEAD commit SHA of the head branch at fetch time.</param>
+/// <param name="IsDraft">True when the PR is a draft (not ready for review).</param>
+/// <param name="Author">Login of the user who opened the PR.</param>
+/// <param name="HtmlUrl">Browser URL for the pull request.</param>
+public sealed record OpenPullRequest(
+    int Number,
+    string HeadSha,
+    bool IsDraft,
+    string Author,
+    string HtmlUrl);

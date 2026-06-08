@@ -295,6 +295,28 @@ internal sealed class GitHubProjectsClient : IGitHubProjectsClient
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<OpenPullRequest>> ListOpenPullRequestsAsync(CancellationToken ct)
+    {
+        var prs = await _rest.ListOpenPullRequestsAsync(_options.Owner, _options.Repository.Name, ct)
+            .ConfigureAwait(false);
+        return prs
+            .Select(p => new OpenPullRequest(p.Number, p.HeadSha, p.IsDraft, p.Author, p.HtmlUrl))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> GetReviewedHeadShasAsync(
+        int pullRequestNumber, string reviewerLogin, CancellationToken ct)
+    {
+        var reviews = await _rest.GetPullRequestReviewsAsync(
+            _options.Owner, _options.Repository.Name, pullRequestNumber, ct).ConfigureAwait(false);
+        return reviews
+            .Where(r => string.Equals(r.ReviewerLogin, reviewerLogin, StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.CommitId)
+            .Where(sha => !string.IsNullOrEmpty(sha))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
     public async Task<string> GetReviewFeedbackSinceAsync(
         int pullRequestNumber, DateTimeOffset sinceUtc, CancellationToken ct)
     {
