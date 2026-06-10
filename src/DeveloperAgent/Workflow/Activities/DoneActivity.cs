@@ -63,27 +63,30 @@ public sealed class DoneActivity : WorkflowActivity<DoneActivityInput, object?>
         else if (input.PullRequestNumber is null)
         {
             // Failure with no PR opened: the workflow could not get the work past PlanActivity.
-            // Release the item back to Ready so another run can pick it up. The transition is
-            // InProgress → Ready because AcquireTaskActivity already moved it Ready → InProgress.
-            // This used to be done by AgentLifecycleService; Step-15 moved state ownership into
-            // the workflow path so the lifecycle stays a thin dispatcher.
+            // Step-53: park the item InProgress → Backlog instead of releasing it back to Ready.
+            // Releasing to Ready let the poller immediately re-grab the item, producing an infinite
+            // redispatch loop on any item the agent could not implement on the first round. Backlog
+            // is a write-only holding column the poller never reads, so a failed item rests there
+            // until a human moves it back to Ready. DoneActivity is the single owner of this
+            // transition (PlanActivity no longer moves the item — see Step-53). The transition is
+            // InProgress → Backlog because AcquireTaskActivity already moved it Ready → InProgress.
             try
             {
                 await _github.MoveItemAsync(
                     input.ProjectItemId,
                     ProjectState.InProgress,
-                    ProjectState.Ready,
+                    ProjectState.Backlog,
                     ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{Activity}] Failed to release item back to Ready. item={ItemId}",
+                    "[{Activity}] Failed to park item in Backlog. item={ItemId}",
                     nameof(DoneActivity), input.ProjectItemId);
             }
 
             _logger.LogWarning(
-                "[{Activity}] Task finished with failure (no PR). Item released to Ready. item={ItemId}",
+                "[{Activity}] Task finished with failure (no PR). Item parked in Backlog. item={ItemId}",
                 nameof(DoneActivity), input.ProjectItemId);
         }
         else

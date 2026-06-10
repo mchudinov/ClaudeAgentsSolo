@@ -13,7 +13,7 @@ namespace DeveloperAgent.Tests.Workflow;
 /// Unit tests for <see cref="DoneActivity"/>.
 /// Covers all three lifecycle-completion paths:
 ///   1. Success                       → MoveItemAsync(InReview → Done)
-///   2. Failure with no PR opened    → MoveItemAsync(InProgress → Ready) (release back)
+///   2. Failure with no PR opened    → MoveItemAsync(InProgress → Backlog) (Step-53: park, don't re-queue)
 ///   3. Failure with a PR opened     → no MoveItemAsync (workflow keeps the item in InReview)
 /// </summary>
 public sealed class DoneActivityTests
@@ -58,7 +58,7 @@ public sealed class DoneActivityTests
     }
 
     [Fact]
-    public async Task Failure_path_with_no_PR_releases_item_back_to_Ready()
+    public async Task Failure_path_with_no_PR_parks_item_in_Backlog()
     {
         var github = Substitute.For<IGitHubProjectService>();
         var activity = BuildActivity(github);
@@ -75,18 +75,29 @@ public sealed class DoneActivityTests
 
         await activity.RunAsync(MakeContext(), input);
 
-        // Item should be released InProgress → Ready (workflow's failure path before a PR opened).
+        // Step-53: a no-PR implementation failure parks the item InProgress → Backlog so the
+        // poller never re-grabs it (the old InProgress → Ready release caused an infinite
+        // redispatch loop). DoneActivity is the single owner of this transition.
         await github.Received(1).MoveItemAsync(
             "PVTI_abc",
             ProjectState.InProgress,
-            ProjectState.Ready,
+            ProjectState.Backlog,
             Arg.Any<CancellationToken>());
 
-        // It must NOT also move it to Done.
+        // It must NOT release the item back to Ready (that is exactly the loop we are closing).
+        // Arg.Is(...) makes both ProjectState arguments matchers — a bare literal would collide with
+        // Arg.Any<ProjectState>()'s default value (Ready = enum 0) and trip NSubstitute's ambiguity guard.
         await github.DidNotReceive().MoveItemAsync(
             Arg.Any<string>(),
             Arg.Any<ProjectState>(),
-            ProjectState.Done,
+            Arg.Is(ProjectState.Ready),
+            Arg.Any<CancellationToken>());
+
+        // And it must NOT move it to Done.
+        await github.DidNotReceive().MoveItemAsync(
+            Arg.Any<string>(),
+            Arg.Any<ProjectState>(),
+            Arg.Is(ProjectState.Done),
             Arg.Any<CancellationToken>());
     }
 

@@ -73,10 +73,14 @@ public sealed class PlanActivity : WorkflowActivity<PlanActivityInput, PlanResul
 
         if (result.Outcome != AgentRunOutcome.Completed)
         {
+            // Post the human-facing failure explanation, but do NOT move the board item here.
+            // Step-53 makes DoneActivity the single owner of the failure transition (InProgress →
+            // Backlog). Moving the item to Ready from this activity caused a flicker race where a
+            // poll tick could re-grab the item mid-teardown — and ultimately an infinite redispatch
+            // loop. The workflow always follows a non-Completed PlanResult with DoneActivity, which
+            // performs the parking move.
             var comment = FailureCommentFormatter.Format(result);
             await _github.AddItemCommentAsync(input.ContentNodeId, comment, ct);
-            await _github.MoveItemAsync(
-                input.ProjectItemId, ProjectState.InProgress, ProjectState.Ready, ct);
 
             if (current is not null)
             {
