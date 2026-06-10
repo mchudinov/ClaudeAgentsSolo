@@ -16,6 +16,7 @@ public sealed class GitHubProjectServiceTests
 {
     private static readonly ProjectStateNames Names = new()
     {
+        Backlog = "Parked",
         Ready = "Todo",
         InProgress = "Doing",
         InReview = "Reviewing",
@@ -61,7 +62,7 @@ public sealed class GitHubProjectServiceTests
     {
         var client = Client();
         client.TryGetNextItemInStatusAsync("Todo", Arg.Any<CancellationToken>())
-            .Returns(new ProjectBoardItem("pvi", "node", 7, "Title", "Body", "Backlog"));
+            .Returns(new ProjectBoardItem("pvi", "node", 7, "Title", "Body", "Archived"));
         var facade = CreateFacade(client);
 
         (await facade.TryGetNextReadyItemAsync(CancellationToken.None))
@@ -79,6 +80,34 @@ public sealed class GitHubProjectServiceTests
         await facade.MoveItemAsync("pvi", ProjectState.Ready, ProjectState.InProgress, CancellationToken.None);
 
         await client.Received(1).MoveItemAsync("pvi", "Todo", "Doing", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MoveItemAsync_maps_a_Backlog_target_to_its_column_name()
+    {
+        // The failure-routing (Step-53) and triage-gate (Step-54) work both MOVE items to Backlog,
+        // so ToStatusName must know the Backlog column. Deliberately non-default ("Parked").
+        var client = Client();
+        var facade = CreateFacade(client);
+
+        await facade.MoveItemAsync("pvi", ProjectState.InProgress, ProjectState.Backlog, CancellationToken.None);
+
+        await client.Received(1).MoveItemAsync("pvi", "Doing", "Parked", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryGetNextReadyItemAsync_excludes_an_item_parked_in_Backlog()
+    {
+        // Anti-reloop guard (Step-52 → relied on by Step-53): an item sitting in the Backlog column
+        // must NEVER be surfaced as a workable item. Backlog is write-only in the lifecycle mapping —
+        // ToState maps it to no ProjectState, so even if the Ready query returned one it is dropped.
+        var client = Client();
+        client.TryGetNextItemInStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ProjectBoardItem("pvi", "node", 7, "Title", "Body", "Parked"));
+        var facade = CreateFacade(client);
+
+        (await facade.TryGetNextReadyItemAsync(CancellationToken.None))
+            .Should().BeNull("an item parked in Backlog must not be picked up");
     }
 
     // ── GetInFlightItemsAsync ─────────────────────────────────────────────────
@@ -112,7 +141,7 @@ public sealed class GitHubProjectServiceTests
             .Returns(new List<ProjectBoardItem>
             {
                 new("a", "na", 1, "WIP", "", "Doing"),
-                new("c", "nc", 3, "Weird", "", "Backlog"),
+                new("c", "nc", 3, "Weird", "", "Archived"),
             });
         var facade = CreateFacade(client);
 

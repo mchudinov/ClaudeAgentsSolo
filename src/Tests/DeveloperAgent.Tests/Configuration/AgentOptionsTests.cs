@@ -148,10 +148,35 @@ public sealed class ProjectStateNamesTests
     public void Defaults_match_documented_schema()
     {
         var options = new ProjectStateNames();
+        options.Backlog.Should().Be("Backlog");
         options.Ready.Should().Be("Ready");
         options.InProgress.Should().Be("In Progress");
         options.InReview.Should().Be("In Review");
         options.Done.Should().Be("Done");
+    }
+
+    [Fact]
+    public void Binding_from_GitHub_States_section_overrides_all_five()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["GitHub:States:Backlog"] = "Icebox",
+                ["GitHub:States:Ready"] = "Todo",
+                ["GitHub:States:InProgress"] = "Doing",
+                ["GitHub:States:InReview"] = "Reviewing",
+                ["GitHub:States:Done"] = "Shipped",
+            })
+            .Build();
+
+        var options = new ProjectStateNames();
+        config.GetSection("GitHub:States").Bind(options);
+
+        options.Backlog.Should().Be("Icebox");
+        options.Ready.Should().Be("Todo");
+        options.InProgress.Should().Be("Doing");
+        options.InReview.Should().Be("Reviewing");
+        options.Done.Should().Be("Shipped");
     }
 }
 

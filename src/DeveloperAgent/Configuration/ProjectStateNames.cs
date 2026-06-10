@@ -7,6 +7,10 @@ namespace DeveloperAgent.Configuration;
 /// </summary>
 public sealed record ProjectStateNames
 {
+    /// <summary>Holding column for parked items — rejected by triage or after a failed attempt.
+    /// The agent moves items here but never picks them up again.</summary>
+    public string Backlog { get; init; } = "Backlog";
+
     /// <summary>Items that are ready for the agent to pick up.</summary>
     public string Ready { get; init; } = "Ready";
 

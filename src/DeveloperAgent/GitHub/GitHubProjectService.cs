@@ -29,9 +29,15 @@ internal sealed class GitHubProjectService : IGitHubProjectService
         ProjectState.InProgress => _states.InProgress,
         ProjectState.InReview   => _states.InReview,
         ProjectState.Done       => _states.Done,
+        ProjectState.Backlog    => _states.Backlog,
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
     };
 
+    // Note the deliberate asymmetry with ToStatusName: ToState does NOT recognise the Backlog
+    // column. Backlog is a write-only holding state — the agent moves items INTO it but must never
+    // pick one OUT, so a Backlog item maps to no ProjectState and is dropped on read (see
+    // ToProjectItem). The "never re-grabbed" guarantee is enforced here AND by the fact that the
+    // pickup queries only ask for the Ready / InProgress / InReview columns.
     private ProjectState? ToState(string statusName)
     {
         if (string.Equals(statusName, _states.Ready, StringComparison.OrdinalIgnoreCase)) return ProjectState.Ready;
@@ -43,8 +49,9 @@ internal sealed class GitHubProjectService : IGitHubProjectService
 
     /// <summary>
     /// Maps a board item onto a typed <see cref="ProjectItem"/>, or <see langword="null"/> when its
-    /// status is not one of the four known lifecycle states (e.g. Backlog) — mirroring the old
-    /// "unknown status excluded" behaviour.
+    /// status is not one of the known workable lifecycle states (e.g. Backlog, or any unrecognised
+    /// column) — mirroring the old "unknown status excluded" behaviour and keeping parked items
+    /// out of the agent's reach.
     /// </summary>
     private ProjectItem? ToProjectItem(ProjectBoardItem? item)
     {
