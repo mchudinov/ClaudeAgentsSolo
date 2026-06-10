@@ -73,6 +73,24 @@ public sealed class PlanActivityTests
     }
 
     [Fact]
+    public async Task Failure_comment_states_the_item_was_parked_in_Backlog_with_a_recovery_path()
+    {
+        var github = Substitute.For<IGitHubProjectService>();
+        var input = MakeInput();
+        var activity = Build(github, AgentReturning(Failure()));
+
+        await activity.RunAsync(new FakePlanActivityContext(), input);
+
+        // Backlog is write-only — the poller never re-grabs a parked item. So the comment is the
+        // human recovery path (mirroring Step-54's triage rejection): it must say the item was parked
+        // in Backlog and how to re-queue it (move back to Ready).
+        await github.Received(1).AddItemCommentAsync(
+            input.ContentNodeId,
+            Arg.Is<string>(c => c.Contains("Backlog") && c.Contains("Ready")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Success_neither_comments_nor_moves_the_item()
     {
         var github = Substitute.For<IGitHubProjectService>();

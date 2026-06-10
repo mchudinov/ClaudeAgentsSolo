@@ -79,7 +79,12 @@ public sealed class PlanActivity : WorkflowActivity<PlanActivityInput, PlanResul
             // poll tick could re-grab the item mid-teardown — and ultimately an infinite redispatch
             // loop. The workflow always follows a non-Completed PlanResult with DoneActivity, which
             // performs the parking move.
-            var comment = FailureCommentFormatter.Format(result);
+            // FailureCommentFormatter is disposition-neutral (shared with ModifyCodeActivity, which
+            // leaves the item in InReview, and the legacy TaskExecutor). DoneActivity will park this
+            // item in the write-only Backlog column, where the poller never re-grabs it, so we append
+            // the parking + recovery notice here — at the call site that knows the disposition —
+            // mirroring Step-54's TriageCommentFormatter.
+            var comment = FailureCommentFormatter.Format(result) + "\n\n" + BacklogParkingNotice;
             await _github.AddItemCommentAsync(input.ContentNodeId, comment, ct);
 
             if (current is not null)
@@ -99,6 +104,14 @@ public sealed class PlanActivity : WorkflowActivity<PlanActivityInput, PlanResul
 
         return new PlanResult(result.Outcome, result.PullRequest?.Number, result.ToolCallsUsed, result.TerminationReason);
     }
+
+    /// <summary>
+    /// Recovery notice appended to the round-1 failure comment. Backlog is write-only, so this is the
+    /// only signal a maintainer gets that the item was parked and needs a manual nudge to re-run.
+    /// </summary>
+    private const string BacklogParkingNotice =
+        "**Auto-parked in Backlog after a failed implementation attempt.** " +
+        "The agent will not retry this item automatically — move it back to **Ready** to re-queue it.";
 
     private static string? SanitizeLastError(AgentRunResult result) =>
         result.Outcome == AgentRunOutcome.SandboxViolation
