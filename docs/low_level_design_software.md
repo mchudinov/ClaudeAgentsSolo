@@ -268,8 +268,16 @@ Dapr supports resiliency policies for timeouts, retries/back-offs, and circuit b
 
 ## Recommended runtime flow
 
+The system runs as **two cooperating services** — the **DeveloperAgent** and the
+**ReviewerAgent** — both launched by the Aspire AppHost. They do not call each other; they
+collaborate **only through GitHub state** (the project-board column plus the pull-request's
+review verdict, head SHA, and merged flag). Each polls GitHub on its own cadence, so the
+collaboration is polling-based and eventually consistent.
+
+### DeveloperAgent worker
+
 1. Worker starts.
-2. Worker loads config from appsettings
+2. Worker loads config from appsettings.
 3. Worker starts/connects MCP clients:
    - GitHub MCP
    - Context7 MCP
@@ -285,7 +293,62 @@ Dapr supports resiliency policies for timeouts, retries/back-offs, and circuit b
    - workflow id = github-project-item-id
 7. Dapr Workflow coordinates the full programming lifecycle.
 8. Dapr Actor protects per-item state transitions.
-9. Agent performs coding work through controlled tools.
-10. Build/test/PR/review steps are checkpointed.
-11. After approval and merge, workflow moves item to Done.
-12. Agent writes compacted task memory to Dapr Redis.
+9. Agent performs coding work through controlled tools, opens a PR, and the workflow
+   moves the board item to **In Review**.
+10. Build/test/PR steps are checkpointed.
+11. The workflow enters its **review loop**: `WaitForReviewActivity` polls the PR on a
+    one-minute cadence (racing external events against a timer).
+12. After approval **and** merge (`Merged && Approved`), the workflow moves the item to Done.
+13. Agent writes compacted task memory to Dapr Redis.
+
+### ReviewerAgent worker
+
+The ReviewerAgent is a **stateless** web service — GitHub is the only record of what it has
+reviewed, so a restart re-derives its work.
+
+1. Worker starts and loads config from appsettings — the shared `Agent` section (identity, model,
+   persona, `PollIntervalSeconds`, mirroring the DeveloperAgent host) plus a `Reviewer` section for
+   the review-specific knobs (diff caps, required PR-body sections, idempotency/draft/author filters).
+2. Worker creates a Microsoft Agent Framework agent:
+   - Anthropic provider
+   - reviewer persona markdown
+   - a single `submit_review` tool (no repo-mutating tools — review is read-only)
+3. `ReviewLifecycleService` polls the repository's **open PRs** every `PollIntervalSeconds`.
+4. A PR is **due** when it is not a skipped draft, its author is allowed, and its current
+   **head SHA has not yet been reviewed** by the configured reviewer login. Idempotency is
+   keyed on `(PR number, head SHA, reviewer login)` — each head SHA is reviewed once.
+5. For each due PR, `ReviewerAgent.ReviewAsync` runs two deterministic pre-checks, then a
+   model-backed persona scan:
+   - **Check 1** — the PR body contains every required section → else `RequestChanges`.
+   - **Check 2** — the diff is not oversized (file/line caps) → else `RequestChanges`.
+   - **Persona scan** — the agent reads the full diff and calls `submit_review` once.
+6. The reviewer posts **one** GitHub review: **Approve** or **RequestChanges**. It fails closed
+   (RequestChanges) on any internal error and **never merges** — merging the approved PR is an
+   out-of-band human action that the DeveloperAgent's workflow simply observes.
+   (A manual `POST /review/{prNumber}` endpoint exists for on-demand reviews.)
+
+### How the two agents collaborate
+
+```text
+DeveloperAgent                          GitHub (shared state)               ReviewerAgent
+──────────────                          ─────────────────────               ─────────────
+opens PR + moves item ──────────────►   PR open @ SHA#1, In Review
+                                        PR @ SHA#1 unreviewed       ◄──────  poll picks it up (due)
+                                                                             pre-checks + persona scan
+WaitForReviewActivity polls    ◄──────  review posted              ◄──────  submit Approve / RequestChanges
+  • RequestChanges → ModifyCode
+      push fix ─────────────────────►   PR head → SHA#2 ───────────────────► next poll: SHA#2 due → re-review
+  • Approved → wait for merge
+      (human merges) ◄──────────────    PR merged
+  DoneActivity → In Review → Done
+  CompactMemory + cleanup
+```
+
+- **`RequestChanges` is the iteration signal.** It triggers a fresh DeveloperAgent round
+  (`ModifyCodeActivity`) against the same branch; the resulting push produces a new head SHA,
+  which makes the PR "due" again and re-arms the reviewer.
+- **Approval alone does not finish the task.** The developer's review loop completes only on the
+  *merged* state; an approved-but-unmerged PR keeps looping on the cadence timer until merged.
+- **No service-to-service messaging.** Neither side subscribes to the other; both reconcile
+  against GitHub. (The AppHost wires a Service Bus topic, but it is currently unconsumed
+  scaffolding and is not part of this handshake.)

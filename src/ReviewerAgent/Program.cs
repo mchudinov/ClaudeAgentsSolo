@@ -46,18 +46,39 @@ public partial class Program
             builder.AddOpenTelemetry();
 
             // ── Options ───────────────────────────────────────────────────────────
+            // Agent-identity settings live in the shared "Agent" section — the same structure the
+            // DeveloperAgent host uses (Name/Model/Effort/PersonaPath/poll cadence). The engine's
+            // ReviewerOptions and the polling loop's ReviewPollingOptions source Model/PersonaPath/
+            // PollIntervalSeconds from "Agent"; review-specific knobs (diff caps, required PR-body
+            // sections, idempotency login, draft/author filters) stay in "Reviewer".
             builder.Services
-                .AddOptions<ReviewerOptions>()
-                .Bind(builder.Configuration.GetSection("Reviewer"))
-                .Validate(o => o.MaxDiffFiles > 0, "Reviewer.MaxDiffFiles must be > 0")
-                .Validate(o => o.MaxDiffLines > 0, "Reviewer.MaxDiffLines must be > 0")
-                .Validate(o => !string.IsNullOrWhiteSpace(o.Model), "Reviewer.Model must not be empty")
+                .AddOptions<AgentOptions>()
+                .Bind(builder.Configuration.GetSection("Agent"))
+                .Validate(o => !string.IsNullOrWhiteSpace(o.Model), "Agent.Model must not be empty")
+                .Validate(o => o.PollIntervalSeconds > 0, "Agent.PollIntervalSeconds must be > 0")
                 .ValidateOnStart();
 
+            // ReviewerOptions: Model + PersonaPath from "Agent"; diff-size caps from "ScopeLimits"
+            // (the reviewer analog of the DeveloperAgent host's ScopeLimits section); required PR-body
+            // sections from "Reviewer". The three sections are disjoint, so binding them in turn never
+            // touches the same key twice and RequiredPrBodySections loads exactly once (Step-41).
+            builder.Services
+                .AddOptions<ReviewerOptions>()
+                .Bind(builder.Configuration.GetSection("Agent"))
+                .Bind(builder.Configuration.GetSection("Reviewer"))
+                .Bind(builder.Configuration.GetSection("ScopeLimits"))
+                .Validate(o => o.MaxDiffFiles > 0, "ScopeLimits.MaxDiffFiles must be > 0")
+                .Validate(o => o.MaxDiffLines > 0, "ScopeLimits.MaxDiffLines must be > 0")
+                .Validate(o => !string.IsNullOrWhiteSpace(o.Model), "Agent.Model must not be empty")
+                .ValidateOnStart();
+
+            // ReviewPollingOptions: PollIntervalSeconds from "Agent"; login/draft/author filters
+            // from "Reviewer" (AuthorAllowList lives only in "Reviewer" → single load).
             builder.Services
                 .AddOptions<ReviewPollingOptions>()
+                .Bind(builder.Configuration.GetSection("Agent"))
                 .Bind(builder.Configuration.GetSection("Reviewer"))
-                .Validate(o => o.PollIntervalSeconds > 0, "Reviewer.PollIntervalSeconds must be > 0")
+                .Validate(o => o.PollIntervalSeconds > 0, "Agent.PollIntervalSeconds must be > 0")
                 .ValidateOnStart();
 
             builder.Services
@@ -114,6 +135,13 @@ public partial class Program
             builder.Services.AddHostedService<ReviewLifecycleService>();
 
             var app = builder.Build();
+
+            // Bound "Agent" settings are available now — log the configured identity/model.
+            var agentOptions = app.Services
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentOptions>>().Value;
+            Serilog.Log.Logger.Information(
+                "{AgentName} configured: model={Model} effort={Effort} pollIntervalSeconds={PollIntervalSeconds}",
+                agentOptions.Name, agentOptions.Model, agentOptions.Effort, agentOptions.PollIntervalSeconds);
 
             app.MapDefaultEndpoints(applicationStartTime);
 

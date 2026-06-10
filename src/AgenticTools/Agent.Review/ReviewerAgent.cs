@@ -109,6 +109,9 @@ public sealed class ReviewerAgent : IReviewerAgent
                 // Temperature intentionally NOT set: newer Anthropic models reject a `temperature`
                 // request field; leaving it null makes the provider omit it.
                 AllowMultipleToolCalls = false,
+                // Apply the configured reasoning effort (output_config.effort) via the Anthropic
+                // request seam. Null when Effort is blank, leaving the provider default in place.
+                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_reviewerOptions.Effort),
             },
         };
 

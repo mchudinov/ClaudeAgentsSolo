@@ -216,6 +216,52 @@ public sealed class ReviewerAgentTests
     }
 
     [Fact]
+    public async Task Persona_scan_applies_configured_effort_as_RawRepresentationFactory()
+    {
+        var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 1, ChangedLines: 20, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+
+        ChatOptions? observed = null;
+        // BuildReviewer's ReviewerOptions leaves Effort at its default ("high") — a configured value.
+        var reviewer = BuildReviewer(gitHub, CapturingChatClient(o => observed = o));
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        result.UsedModel.Should().BeTrue();
+        observed.Should().NotBeNull();
+        observed!.RawRepresentationFactory.Should().NotBeNull(
+            because: "a configured Effort must be applied to the request via output_config.effort");
+    }
+
+    [Fact]
+    public async Task Persona_scan_omits_effort_RawRepresentationFactory_when_blank()
+    {
+        var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 1, ChangedLines: 20, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+
+        ChatOptions? observed = null;
+        var reviewer = new ReviewerAgent(
+            gitHub,
+            new StubChatClientFactory(CapturingChatClient(o => observed = o)),
+            MakePersonaLoader(),
+            Options.Create(new ReviewerOptions
+            {
+                MaxDiffFiles = 50,
+                MaxDiffLines = 2_000,
+                RequiredPrBodySections = RequiredSections,
+                Effort = "",
+            }),
+            NullLogger<ReviewerAgent>.Instance);
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        result.UsedModel.Should().BeTrue();
+        observed.Should().NotBeNull();
+        observed!.RawRepresentationFactory.Should().BeNull(
+            because: "a blank Effort must leave the provider default (no output_config.effort)");
+    }
+
+    [Fact]
     public async Task Model_finishing_without_submit_review_fails_closed_to_RequestChanges()
     {
         var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 1, ChangedLines: 20, UnifiedDiff: "diff");

@@ -67,7 +67,14 @@
       "Bash(python -c \"import sys,json; [print\\(r['conclusion'] or r['status'],'|',r['name'],'|',r['headSha'][:7]\\) for r in json.load\\(sys.stdin\\)]\")",
       "Bash(python -c \"import sys,json; i=next\\(x for x in json.load\\(sys.stdin\\)['items'] if x.get\\('content',{}\\).get\\('number'\\)==73\\); print\\('status:', i.get\\('status'\\)\\)\")",
       "Bash(python -c \"import sys,json; print\\(json.load\\(sys.stdin\\).get\\('id',''\\)\\)\")",
-      "Bash(python -c \"import sys,json; items=json.load\\(sys.stdin\\)['items']; [print\\(f'{i[\\\\\"id\\\\\"]} | {i.get\\(\\\\\"title\\\\\",\\\\\"\\\\\"\\)} | {i.get\\(\\\\\"status\\\\\",\\\\\"\\\\\"\\)}'\\) for i in items if 'Step-12' in i.get\\('title',''\\)]\")"
+      "Bash(python -c \"import sys,json; items=json.load\\(sys.stdin\\)['items']; [print\\(f'{i[\\\\\"id\\\\\"]} | {i.get\\(\\\\\"title\\\\\",\\\\\"\\\\\"\\)} | {i.get\\(\\\\\"status\\\\\",\\\\\"\\\\\"\\)}'\\) for i in items if 'Step-12' in i.get\\('title',''\\)]\")",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(Rename-Item *)",
+      "Bash(sed 's/^[[:space:]]*//')",
+      "Bash(grep -iE '^\\(low|medium|high|xhigh|max\\)$')",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('src/ReviewerAgent/appsettings.json','utf8'\\)\\); console.log\\('appsettings.json: valid JSON'\\)\")",
+      "Bash(python -c \"import json; json.load\\(open\\('src/ReviewerAgent/appsettings.json'\\)\\); print\\('appsettings.json: valid JSON'\\)\")"
     ]
   }
 }

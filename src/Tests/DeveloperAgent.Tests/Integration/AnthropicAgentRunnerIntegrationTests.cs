@@ -98,7 +98,11 @@ public sealed class AnthropicAgentRunnerIntegrationTests : IDisposable
         var agentOpts = Options.Create(new AgentOptions
         {
             Model             = "claude-haiku-4-5",   // cheapest model for integration test
-            Effort            = "low",                // minimal thinking budget
+            // Effort MUST stay blank here: the effort parameter (output_config.effort) is not
+            // supported on Haiku 4.5 and returns a 400. Now that AgentOptions.Effort is wired into
+            // the request, a non-blank value would make this run ApiError instead of Completed.
+            // (Production agents run on claude-opus-4-8, which does support effort.)
+            Effort            = "",
             PersonaPath       = "personas/developer.md",
         });
         var scopeLimits = Options.Create(new ScopeLimitOptions

@@ -170,6 +170,33 @@ public sealed class AnthropicAgentRunnerTests
         tool.Calls.Should().Be(1);
     }
 
+    // ── Test: effort is applied to the request ───────────────────────────────
+
+    [Fact]
+    public async Task ChatOptions_carry_effort_RawRepresentationFactory_from_AgentOptions()
+    {
+        // The inner client captures the ChatOptions the runner built (forwarded unchanged through
+        // the function-invoking middleware). AgentOptions defaults Effort to "xhigh", so the runner
+        // must set RawRepresentationFactory (which lands as output_config.effort on the request).
+        ChatOptions? observed = null;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                observed = ci.Arg<ChatOptions>();
+                return Task.FromResult(TextResponse());
+            });
+
+        var runner = BuildRunner(chatClient);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        observed.Should().NotBeNull();
+        observed!.RawRepresentationFactory.Should().NotBeNull(
+            because: "AgentOptions.Effort (default xhigh) must reach the request as output_config.effort");
+    }
+
     // ── Test: hard cap ───────────────────────────────────────────────────────
 
     [Fact]

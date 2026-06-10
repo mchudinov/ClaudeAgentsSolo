@@ -125,6 +125,9 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 // Disable parallel tool calls so SandboxViolationException from the FIRST
                 // offending tool ends the run without other tools running in parallel.
                 AllowMultipleToolCalls = false,
+                // Apply the configured reasoning effort (output_config.effort) via the Anthropic
+                // request seam. Null when Effort is blank, leaving the provider default in place.
+                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_options.Effort),
             },
         };
 
