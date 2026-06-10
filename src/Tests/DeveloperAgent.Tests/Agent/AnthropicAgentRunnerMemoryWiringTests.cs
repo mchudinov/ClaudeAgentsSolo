@@ -107,6 +107,35 @@ public sealed class AnthropicAgentRunnerMemoryWiringTests
     }
 
     [Fact]
+    public async Task Run_loads_prior_chat_history_and_sends_it_to_the_model()
+    {
+        // The point of the ChatHistoryProvider is "round 2 sees round 1". Seed a prior turn, run once,
+        // and assert it reached the model — proving the loaded history is actually injected into the
+        // conversation, not merely that the Store hook fires (a distinct MAF code path).
+        const string sentinel = "PRIOR_TURN_SENTINEL_42";
+        var historyStore = new InMemoryChatHistoryStore();
+        await historyStore.SaveAsync(AgentId, "pid-77", [new ChatMessage(ChatRole.User, sentinel)], CancellationToken.None);
+
+        var seenMessages = new List<ChatMessage>();
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                seenMessages.AddRange(ci.Arg<IEnumerable<ChatMessage>>());
+                return Task.FromResult(
+                    new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")) { FinishReason = ChatFinishReason.Stop });
+            });
+
+        var runner = BuildRunner(chatClient, BuildFactory(historyStore, new InMemoryAgentMemoryStore()));
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        string.Join("\n", seenMessages.Select(m => m.Text)).Should().Contain(sentinel,
+            because: "the ChatHistoryProvider's loaded history must be sent to the model");
+    }
+
+    [Fact]
     public async Task Run_without_a_memory_factory_leaves_stores_untouched()
     {
         var historyStore = new InMemoryChatHistoryStore();
