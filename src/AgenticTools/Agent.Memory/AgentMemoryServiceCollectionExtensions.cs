@@ -8,10 +8,11 @@ namespace Agent.Memory;
 public static class AgentMemoryServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the three Dapr-backed memory services as singletons:
+    /// Registers the Dapr-backed memory stores as singletons:
     /// <see cref="IDaprStateClient"/> (<see cref="DaprClientStateAdapter"/>),
-    /// <see cref="IAgentSessionStore"/> (<see cref="DaprAgentSessionStore"/>), and
-    /// <see cref="IAgentMemoryStore"/> (<see cref="DaprAgentMemoryStore"/>).
+    /// <see cref="IAgentSessionStore"/> (<see cref="DaprAgentSessionStore"/>),
+    /// <see cref="IAgentMemoryStore"/> (<see cref="DaprAgentMemoryStore"/>), and
+    /// <see cref="IChatHistoryStore"/> (<see cref="DaprChatHistoryStore"/>).
     /// </summary>
     /// <remarks>
     /// The host must register a <c>Dapr.Client.DaprClient</c> — <see cref="DaprClientStateAdapter"/>
@@ -39,6 +40,8 @@ public static class AgentMemoryServiceCollectionExtensions
             sp.GetRequiredService<IDaprStateClient>(), stateStoreName, agentId));
         services.AddSingleton<IAgentMemoryStore>(sp => new DaprAgentMemoryStore(
             sp.GetRequiredService<IDaprStateClient>(), stateStoreName));
+        services.AddSingleton<IChatHistoryStore>(sp => new DaprChatHistoryStore(
+            sp.GetRequiredService<IDaprStateClient>(), stateStoreName, agentId));
 
         return services;
     }

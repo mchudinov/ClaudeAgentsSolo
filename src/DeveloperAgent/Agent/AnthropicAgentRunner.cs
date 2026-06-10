@@ -1,3 +1,4 @@
+using DeveloperAgent.Agent.Memory;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
 using Agent.Workspace;
@@ -37,6 +38,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
     private readonly IMcpToolSource? _mcpToolSource;
     private readonly ILogger<AnthropicAgentRunner> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IAgentMemoryProviderFactory? _memoryProviderFactory;
 
     public AnthropicAgentRunner(
         IAgentChatClientFactory chatClientFactory,
@@ -46,7 +48,8 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         IEnumerable<ITool> tools,
         ILogger<AnthropicAgentRunner> logger,
         IMcpToolSource? mcpToolSource = null,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        IAgentMemoryProviderFactory? memoryProviderFactory = null)
     {
         _chatClientFactory = chatClientFactory;
         _personaLoader = personaLoader;
@@ -56,6 +59,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
         _mcpToolSource = mcpToolSource;
         _logger = logger;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        _memoryProviderFactory = memoryProviderFactory;
     }
 
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, CancellationToken ct)
@@ -130,6 +134,20 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_options.Effort),
             },
         };
+
+        // Step-31: attach the per-run memory providers (LLD §P2-G) when the host supplied a factory.
+        // MAF exposes two distinct slots — a single ChatHistoryProvider (rolling-window chat history,
+        // persisted across review rounds under chat-history:{agentId}:{projectItemId}) and a list of
+        // AIContextProvider (repo-convention + task-lesson injection). ChatHistoryProvider is NOT an
+        // AIContextProvider, so they cannot share a list. When no factory is supplied (unit tests, or
+        // memory disabled) both slots stay null/empty and the agent runs exactly as before.
+        if (_memoryProviderFactory is not null)
+        {
+            var memory = _memoryProviderFactory.Create(request.Item.ProjectItemId);
+            agentOptions.ChatHistoryProvider = memory.ChatHistory;
+            if (memory.ContextProviders.Count > 0)
+                agentOptions.AIContextProviders = [.. memory.ContextProviders];
+        }
 
         var agent = new ChatClientAgent(
             countingClient,

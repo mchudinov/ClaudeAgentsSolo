@@ -5,7 +5,7 @@ namespace Agent.Memory.Tests;
 
 /// <summary>
 /// Verifies <see cref="AgentMemoryServiceCollectionExtensions.AddAgentMemoryServices"/> registers
-/// exactly the three Dapr-backed memory services to their expected concrete implementations as
+/// exactly the four Dapr-backed memory stores to their expected concrete implementations as
 /// singletons — the equivalence guard for the <c>Program.cs</c> registration that this extension
 /// replaced (Step-40). The MAF providers and the summarizer/extractor seams are deliberately not
 /// registered here, so they are intentionally absent from these assertions.
@@ -44,11 +44,19 @@ public sealed class AgentMemoryServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void Registers_IChatHistoryStore_as_DaprChatHistoryStore()
+    {
+        using var sp = BuildProvider();
+        sp.GetRequiredService<IChatHistoryStore>().Should().BeOfType<DaprChatHistoryStore>();
+    }
+
+    [Fact]
     public void Registrations_are_singletons()
     {
         using var sp = BuildProvider();
         sp.GetRequiredService<IAgentMemoryStore>().Should().BeSameAs(sp.GetRequiredService<IAgentMemoryStore>());
         sp.GetRequiredService<IAgentSessionStore>().Should().BeSameAs(sp.GetRequiredService<IAgentSessionStore>());
+        sp.GetRequiredService<IChatHistoryStore>().Should().BeSameAs(sp.GetRequiredService<IChatHistoryStore>());
         sp.GetRequiredService<IDaprStateClient>().Should().BeSameAs(sp.GetRequiredService<IDaprStateClient>());
     }
 

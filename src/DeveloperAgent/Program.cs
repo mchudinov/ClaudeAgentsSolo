@@ -1,7 +1,9 @@
 using DeveloperAgent.Actors;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Agent.Memory;
 using DeveloperAgent.Agent.Tools;
 using DeveloperAgent.Configuration;
+using Microsoft.Extensions.Options;
 using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
@@ -109,6 +111,16 @@ public class Program
             builder.Services
                 .AddOptions<AnthropicOptions>()
                 .Bind(builder.Configuration.GetSection("Anthropic"));
+
+            // Memory layer (Step-31 / P2-G). Window sizes keep the injected context bounded; the
+            // ConfigurationBinder array-append gotcha is list-only, so the scalar defaults are safe.
+            builder.Services
+                .AddOptions<MemoryOptions>()
+                .Bind(builder.Configuration.GetSection("Memory"))
+                .Validate(o => !o.Enabled || o.MaxRecentTurns > 0, "Memory.MaxRecentTurns must be > 0")
+                .Validate(o => !o.Enabled || o.MaxInjectedPerScope > 0, "Memory.MaxInjectedPerScope must be > 0")
+                .Validate(o => !o.Enabled || o.MaxStoredPerScope > 0, "Memory.MaxStoredPerScope must be > 0")
+                .ValidateOnStart();
 
             builder.Services
                 .AddOptions<GitHubOptions>()
@@ -310,12 +322,32 @@ public class Program
             // host owns it (AddAgentMemoryServices' DaprClientStateAdapter depends on it, the
             // same way AddGitHubProjectServices depends on a host-supplied IGitHubTokenProvider).
             // AddAgentMemoryServices then registers the IDaprStateClient adapter plus the
-            // IAgentSessionStore (agent-session:{id}) and IAgentMemoryStore (repo-state / task-memory)
-            // singletons. AgentId = Environment.MachineName matches the DaprActorTaskStateStore
-            // registration above. The MAF providers and the ISummarizer/IMemoryExtractor seams are
-            // constructed per run, not via DI.
+            // IAgentSessionStore (agent-session:{id}), IAgentMemoryStore (repo-state / task-memory)
+            // and IChatHistoryStore (chat-history:{id}) singletons. AgentId = Environment.MachineName
+            // matches the DaprActorTaskStateStore registration above. The MAF providers themselves are
+            // constructed per run (see IAgentMemoryProviderFactory below), not as DI singletons.
             builder.Services.AddSingleton<DaprClient>(_ => new DaprClientBuilder().Build());
             builder.Services.AddAgentMemoryServices(Environment.MachineName);
+
+            // ── Memory providers wiring (Step-31, P2-G integration) ───────────────
+            // Two host-supplied seam bodies — the LLM-backed summarizer/extractor are deferred
+            // (docs/plans/07-phase-2-outline.md §P2-G), so for now: PlaceholderSummarizer keeps chat
+            // history bounded without a model call, and NoOpMemoryExtractor learns nothing while the
+            // inject path (repo conventions + the task-memory CompactMemoryActivity writes) stays live.
+            builder.Services.AddSingleton<ISummarizer, PlaceholderSummarizer>();
+            builder.Services.AddSingleton<IMemoryExtractor, NoOpMemoryExtractor>();
+            // The factory builds the per-run DaprChatHistoryProvider + DaprAgentMemoryContextProvider
+            // with runtime ids (agentId = Environment.MachineName — matching the stores above — and
+            // repoId derived from GitHubOptions). AnthropicAgentRunner picks it up via its optional
+            // ctor param and attaches both MAF provider slots; Memory:Enabled=false disables it.
+            builder.Services.AddSingleton<IAgentMemoryProviderFactory>(sp => new AgentMemoryProviderFactory(
+                sp.GetRequiredService<IChatHistoryStore>(),
+                sp.GetRequiredService<ISummarizer>(),
+                sp.GetRequiredService<IAgentMemoryStore>(),
+                sp.GetRequiredService<IMemoryExtractor>(),
+                sp.GetRequiredService<IOptions<MemoryOptions>>(),
+                sp.GetRequiredService<IOptions<GitHubOptions>>(),
+                Environment.MachineName));
 
             // ── Dapr Actors ───────────────────────────────────────────────────────
             // Step-10 (P2-B part 1/2): register the ProgrammingTaskActor so the
