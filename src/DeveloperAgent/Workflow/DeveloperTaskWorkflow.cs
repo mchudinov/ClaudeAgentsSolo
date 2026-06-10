@@ -89,6 +89,26 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             return new TaskResult("Done");
         }
 
+        // ── 0b. TRIAGE (relevance gate) ─────────────────────────────────────────
+        // Before any expensive work, decide whether this item is in-scope for the project AND within
+        // the agent's skill. The Enabled gate lives inside the activity (disabled → always relevant),
+        // so the workflow body stays deterministic and config-free. On rejection the activity has
+        // already commented and moved the item to the write-only Backlog column, so we just clean up
+        // the freshly-loaded session and stop. A null result (e.g. an unconfigured test context) is
+        // treated as relevant — the gate fails open and never blocks legitimate work.
+        var triageInput = new TriageActivityInput(
+            input.ProjectItemId, input.ContentNodeId, input.ContentNumber,
+            input.Title, input.BodyMarkdown);
+
+        var triageResult = await context.CallActivityAsync<TriageActivityResult>(
+            nameof(TriageActivity), triageInput, retryOptions);
+
+        if (triageResult is { IsRelevant: false })
+        {
+            await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
+            return new TaskResult("Rejected");
+        }
+
         // ── 1. ACQUIRE ──────────────────────────────────────────────────────────
         var acquireInput = new AcquireTaskActivityInput(
             input.ProjectItemId, input.ContentNodeId, input.ContentNumber,

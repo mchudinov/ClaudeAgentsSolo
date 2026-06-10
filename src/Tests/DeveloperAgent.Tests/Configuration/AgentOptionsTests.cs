@@ -180,6 +180,40 @@ public sealed class ProjectStateNamesTests
     }
 }
 
+public sealed class TriageOptionsTests
+{
+    [Fact]
+    public void Defaults_match_documented_schema()
+    {
+        var options = new TriageOptions();
+        options.Enabled.Should().BeFalse(
+            because: "a host without a Triage section must boot with the gate off — no surprise LLM calls");
+        options.RepoScope.Should().Be("");
+        options.AgentSkill.Should().NotBeNullOrWhiteSpace(
+            because: "the agent-skill description has a sensible built-in default");
+    }
+
+    [Fact]
+    public void Binding_from_Triage_section_overrides_all_members()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Triage:Enabled"] = "true",
+                ["Triage:RepoScope"] = "A widget service.",
+                ["Triage:AgentSkill"] = "Go microservices.",
+            })
+            .Build();
+
+        var options = new TriageOptions();
+        config.GetSection("Triage").Bind(options);
+
+        options.Enabled.Should().BeTrue();
+        options.RepoScope.Should().Be("A widget service.");
+        options.AgentSkill.Should().Be("Go microservices.");
+    }
+}
+
 public sealed class WorkspaceOptionsTests
 {
     [Fact]

@@ -6,6 +6,7 @@ using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Observability;
+using DeveloperAgent.Triage;
 using Dapr.Client;
 using Dapr.Workflow;
 using Library.Logging;
@@ -119,6 +120,19 @@ public class Program
             builder.Services
                 .AddOptions<ProjectStateNames>()
                 .Bind(builder.Configuration.GetSection("GitHub:States"));
+
+            // ── Relevance triage (Step-54) ──────────────────────────────────────
+            // The triage gate decides, before any work, whether a picked-up item is in-scope for the
+            // project and within the agent's skill; out-of-scope items are parked in Backlog. Disabled
+            // by default in the record so a host without a Triage section boots unchanged; the shipped
+            // appsettings.json turns it on. Fail closed at startup: an enabled gate with no RepoScope
+            // is a misconfiguration (it would have nothing to judge against).
+            builder.Services
+                .AddOptions<TriageOptions>()
+                .Bind(builder.Configuration.GetSection("Triage"))
+                .Validate(o => !o.Enabled || !string.IsNullOrWhiteSpace(o.RepoScope),
+                    "Triage.RepoScope must be set when Triage.Enabled is true")
+                .ValidateOnStart();
 
             builder.Services
                 .AddOptions<WorkspaceOptions>()
@@ -265,6 +279,10 @@ public class Program
             builder.Services.AddSingleton<ITool, CommentOnItemTool>();
             builder.Services.AddSingleton<ITool, CreatePullRequestTool>();
             builder.Services.AddSingleton<IAgentRunner, AnthropicAgentRunner>();
+
+            // Relevance-triage gate (Step-54): one lightweight Anthropic classification call per item,
+            // reusing the same chat-client transport as the agent. Singleton (stateless).
+            builder.Services.AddSingleton<ITriageService, AnthropicTriageService>();
 
             // ── Observability ─────────────────────────────────────────────────────
             // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe

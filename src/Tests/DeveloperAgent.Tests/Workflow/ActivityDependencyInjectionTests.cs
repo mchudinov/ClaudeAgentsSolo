@@ -1,9 +1,11 @@
 using Dapr.Workflow;
 using DeveloperAgent.Agent;
+using DeveloperAgent.Configuration;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using Agent.Workspace;
 using DeveloperAgent.Observability;
+using DeveloperAgent.Triage;
 using DeveloperAgent.Workflow.Activities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +25,7 @@ public sealed class ActivityDependencyInjectionTests
     /// </summary>
     private static readonly HashSet<Type> KnownServiceTypes =
     [
+        typeof(ILogger<TriageActivity>),
         typeof(ILogger<AcquireTaskActivity>),
         typeof(ILogger<CreateBranchActivity>),
         typeof(ILogger<PlanActivity>),
@@ -37,7 +40,9 @@ public sealed class ActivityDependencyInjectionTests
         typeof(ILogger<SaveAgentSessionActivity>),
         typeof(ILogger<DeleteAgentSessionActivity>),
         typeof(IGitHubProjectService),
+        typeof(ITriageService),
         typeof(IOptions<GitHubOptions>),
+        typeof(IOptions<TriageOptions>),
         typeof(IWorkspaceManager),
         typeof(IGitClient),
         typeof(IAgentRunner),
@@ -50,6 +55,7 @@ public sealed class ActivityDependencyInjectionTests
     ];
 
     [Theory]
+    [InlineData(typeof(TriageActivity))]
     [InlineData(typeof(AcquireTaskActivity))]
     [InlineData(typeof(CreateBranchActivity))]
     [InlineData(typeof(PlanActivity))]
@@ -71,6 +77,7 @@ public sealed class ActivityDependencyInjectionTests
     }
 
     [Theory]
+    [InlineData(typeof(TriageActivity))]
     [InlineData(typeof(AcquireTaskActivity))]
     [InlineData(typeof(CreateBranchActivity))]
     [InlineData(typeof(PlanActivity))]

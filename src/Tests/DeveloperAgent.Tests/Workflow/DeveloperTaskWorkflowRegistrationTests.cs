@@ -27,6 +27,7 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
     // ── Activity type hierarchy ──────────────────────────────────────────────
 
     [Theory]
+    [InlineData(typeof(TriageActivity))]
     [InlineData(typeof(AcquireTaskActivity))]
     [InlineData(typeof(CreateBranchActivity))]
     [InlineData(typeof(PlanActivity))]

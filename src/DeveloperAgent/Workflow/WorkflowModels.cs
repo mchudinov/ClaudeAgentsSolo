@@ -45,7 +45,8 @@ public sealed record TaskInput(string ProjectItemId, string ContentNodeId, int C
 }
 
 /// <summary>Final result produced by <see cref="DeveloperTaskWorkflow"/>.</summary>
-/// <param name="Outcome">One of "Done", "Failed", or "Cancelled".</param>
+/// <param name="Outcome">One of "Done", "Failed", "Rejected", or "Cancelled". "Rejected" means the
+/// relevance-triage gate parked the item in Backlog before any work began.</param>
 public sealed record TaskResult(string Outcome);
 
 /// <summary>
@@ -56,6 +57,14 @@ public sealed record TaskResult(string Outcome);
 public sealed record ReviewEventPayload(int PullRequestNumber);
 
 // ── Per-activity input records ────────────────────────────────────────────────
+
+/// <summary>Input for <see cref="Activities.TriageActivity"/>.</summary>
+public sealed record TriageActivityInput(
+    string ProjectItemId,
+    string ContentNodeId,
+    int ContentNumber,
+    string Title,
+    string BodyMarkdown);
 
 /// <summary>Input for <see cref="Activities.AcquireTaskActivity"/>.</summary>
 public sealed record AcquireTaskActivityInput(
@@ -125,6 +134,12 @@ public sealed record DoneActivityInput(
     long ToolCallsUsed);
 
 // ── Per-activity result records ───────────────────────────────────────────────
+
+/// <summary>Result of <see cref="Activities.TriageActivity"/>.</summary>
+/// <param name="IsRelevant">When <see langword="false"/>, the activity has already commented and
+/// moved the item to Backlog; the workflow stops with outcome "Rejected".</param>
+/// <param name="Reason">The triage justification (or a disabled/fail-open note), for logging.</param>
+public sealed record TriageActivityResult(bool IsRelevant, string Reason);
 
 /// <summary>Result of <see cref="Activities.AcquireTaskActivity"/>.</summary>
 public sealed record AcquireTaskResult(string BranchName);

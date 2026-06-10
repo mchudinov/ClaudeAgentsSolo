@@ -32,6 +32,7 @@ public static class WorkflowServiceCollectionExtensions
         services.AddDaprWorkflow(opt =>
         {
             opt.RegisterWorkflow<DeveloperTaskWorkflow>();
+            opt.RegisterActivity<TriageActivity>();
             opt.RegisterActivity<AcquireTaskActivity>();
             opt.RegisterActivity<CreateBranchActivity>();
             opt.RegisterActivity<PlanActivity>();
