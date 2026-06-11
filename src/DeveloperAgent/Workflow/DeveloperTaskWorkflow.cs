@@ -188,9 +188,19 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             await SaveSessionAsync(context, input.ProjectItemId, nameof(WaitForReviewActivity), session.Summary, retryOptions);
 
             // Direct decision when the poll itself observed a terminal state.
-            if (lastReviewResult.Merged && lastReviewResult.ReviewState == PullRequestReviewState.Approved)
+            if (lastReviewResult.ReviewState == PullRequestReviewState.Approved
+                && lastReviewResult.ChecksGreen
+                && lastReviewResult.Mergeable == true)
             {
-                return await CompleteWithSuccessAsync(context, input, branchResult,
+                return await CompleteWithMergeAsync(context, input, branchResult,
+                    acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
+            }
+
+            // Approved but GitHub says the PR conflicts → no point waiting; fail to a human.
+            if (lastReviewResult.ReviewState == PullRequestReviewState.Approved
+                && lastReviewResult.Mergeable == false)
+            {
+                return await CompleteWithMergeFailureAsync(context, input, branchResult,
                     acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
             }
 
@@ -215,7 +225,7 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
             // ── Pending: race external events against a cadence timer ───────────
             // Whoever wins drives the next iteration of the loop:
-            //   • Merged event           → complete success (branch immediately, no extra poll).
+            //   • ReadyToMerge event     → squash-merge then complete (branch immediately, no extra poll).
             //   • ChangesRequested event → invoke ModifyCodeActivity (branch immediately, no extra poll).
             //   • Timer elapsed          → loop back to re-poll (cadence driver).
             //
@@ -224,16 +234,16 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             using var cts = new CancellationTokenSource();
             var changesEventTask = context.WaitForExternalEventAsync<ReviewEventPayload>(
                 WaitForReviewActivity.ChangesRequestedEventName, cts.Token);
-            var mergedEventTask = context.WaitForExternalEventAsync<ReviewEventPayload>(
-                WaitForReviewActivity.MergedEventName, cts.Token);
+            var readyToMergeEventTask = context.WaitForExternalEventAsync<ReviewEventPayload>(
+                WaitForReviewActivity.ReadyToMergeEventName, cts.Token);
             var timerTask = context.CreateTimer(ReviewPollInterval, cts.Token);
 
-            var winner = await Task.WhenAny(changesEventTask, mergedEventTask, timerTask);
+            var winner = await Task.WhenAny(changesEventTask, readyToMergeEventTask, timerTask);
             cts.Cancel();
 
-            if (winner == mergedEventTask)
+            if (winner == readyToMergeEventTask)
             {
-                return await CompleteWithSuccessAsync(context, input, branchResult,
+                return await CompleteWithMergeAsync(context, input, branchResult,
                     acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
             }
 
@@ -260,6 +270,55 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
 
             // Timer won → loop and re-poll.
         }
+    }
+
+    /// <summary>
+    /// Squash-merges the approved PR (and deletes its branch) via <see cref="MergePullRequestActivity"/>,
+    /// then completes. On a hard merge failure it routes to <see cref="CompleteWithMergeFailureAsync"/>.
+    /// </summary>
+    private static async Task<TaskResult> CompleteWithMergeAsync(
+        WorkflowContext context, TaskInput input, CreateBranchResult branchResult,
+        string branchName, int prNumber, long toolCallsUsed, string? summary, WorkflowTaskOptions retryOptions)
+    {
+        var mergeResult = await context.CallActivityAsync<MergePullRequestResult>(
+            nameof(MergePullRequestActivity),
+            new MergePullRequestActivityInput(input.ProjectItemId, input.ContentNodeId, prNumber, branchName),
+            retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(MergePullRequestActivity), summary, retryOptions);
+
+        if (!mergeResult.Succeeded)
+        {
+            return await CompleteWithMergeFailureAsync(context, input, branchResult,
+                branchName, prNumber, toolCallsUsed, summary, retryOptions);
+        }
+
+        return await CompleteWithSuccessAsync(context, input, branchResult,
+            branchName, prNumber, toolCallsUsed, summary, retryOptions);
+    }
+
+    /// <summary>
+    /// Hard merge failure: the PR could not be squash-merged (conflict / branch protection). The merge
+    /// activity has already commented on the PR. Leave the item in In-review for a human (DoneActivity with
+    /// Success=false and a non-null PR number performs no board transition), release the workspace, and stop.
+    /// </summary>
+    private static async Task<TaskResult> CompleteWithMergeFailureAsync(
+        WorkflowContext context, TaskInput input, CreateBranchResult branchResult,
+        string branchName, int prNumber, long toolCallsUsed, string? summary, WorkflowTaskOptions retryOptions)
+    {
+        var doneInput = new DoneActivityInput(
+            ProjectItemId: input.ProjectItemId,
+            ContentNodeId: input.ContentNodeId,
+            WorkspacePath: branchResult.WorkspacePath,
+            BranchName: branchName,
+            DefaultBranch: branchResult.DefaultBranch,
+            PullRequestNumber: prNumber,
+            Success: false,
+            ToolCallsUsed: toolCallsUsed);
+
+        await context.CallActivityAsync<object?>(nameof(DoneActivity), doneInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
+        await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
+        return new TaskResult("MergeFailed");
     }
 
     private static async Task<TaskResult> CompleteWithSuccessAsync(

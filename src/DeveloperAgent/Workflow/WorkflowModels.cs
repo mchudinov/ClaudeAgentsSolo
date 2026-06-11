@@ -45,8 +45,10 @@ public sealed record TaskInput(string ProjectItemId, string ContentNodeId, int C
 }
 
 /// <summary>Final result produced by <see cref="DeveloperTaskWorkflow"/>.</summary>
-/// <param name="Outcome">One of "Done", "Failed", "Rejected", or "Cancelled". "Rejected" means the
-/// relevance-triage gate parked the item in Backlog before any work began.</param>
+/// <param name="Outcome">One of "Done", "Failed", "MergeFailed", "Rejected", or "Cancelled".
+/// "MergeFailed" means the PR was approved but the squash-merge was refused (conflict / branch
+/// protection); the item is left In-review for a human. "Rejected" means the relevance-triage gate
+/// parked the item in Backlog before any work began.</param>
 public sealed record TaskResult(string Outcome);
 
 /// <summary>
@@ -164,7 +166,14 @@ public sealed record ModifyCodeResult(AgentRunOutcome Outcome, long ToolCallsUse
 public sealed record CreatePullRequestResult(int PullRequestNumber);
 
 /// <summary>Result of <see cref="Activities.WaitForReviewActivity"/>.</summary>
-public sealed record WaitForReviewResult(PullRequestReviewState ReviewState, bool Merged, bool ChecksGreen, string? FeedbackMarkdown, DateTimeOffset PolledAtUtc);
+/// <param name="Mergeable">GitHub mergeability: true mergeable, false conflicting, null still computing.</param>
+public sealed record WaitForReviewResult(
+    PullRequestReviewState ReviewState,
+    bool Merged,
+    bool ChecksGreen,
+    string? FeedbackMarkdown,
+    DateTimeOffset PolledAtUtc,
+    bool? Mergeable);
 
 /// <summary>Result of <see cref="Activities.MergePullRequestActivity"/>.</summary>
 /// <param name="Outcome">Merged/AlreadyMerged → success; NotMergeable → the workflow's failure path.</param>

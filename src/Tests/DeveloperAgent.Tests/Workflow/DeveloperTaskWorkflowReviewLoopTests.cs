@@ -44,11 +44,13 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
             new PlanResult(AgentRunOutcome.Completed, prNumber, ToolCallsUsed: 5, TerminationReason: null));
         ctx.SetActivityResult(nameof(CreatePullRequestActivity), new CreatePullRequestResult(prNumber));
         ctx.SetActivityResult(nameof(WaitForReviewActivity),
-            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow));
+            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow, Mergeable: null));
         // For the timer-elapsed branch we will eventually need a second poll result —
         // tests configure that via a queue.
         ctx.SetActivityResult(nameof(ModifyCodeActivity),
             new ModifyCodeResult(AgentRunOutcome.Completed, 3, null));
+        ctx.SetActivityResult(nameof(MergePullRequestActivity),
+            new MergePullRequestResult(MergeOutcome.Merged));
         ctx.SetActivityResult(nameof(DoneActivity), (object?)null);
     }
 
@@ -61,7 +63,7 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         // it via its input rather than re-reading a volatile cache that never holds it.
         var ctx = new FakeWorkflowContext();
         SetupHappyPathUntilReviewLoop(ctx, prNumber: 77);
-        ctx.CompleteExternalEvent("Merged", new ReviewEventPayload(77));
+        ctx.CompleteExternalEvent("ReadyToMerge", new ReviewEventPayload(77));
 
         var workflow = new DeveloperTaskWorkflow();
         await workflow.RunAsync(ctx, Input());
@@ -70,26 +72,83 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         ((CreatePullRequestActivityInput)createPrCall.Input!).PullRequestNumber.Should().Be(77);
     }
 
-    // ── Merged external event ────────────────────────────────────────────────
+    // ── ReadyToMerge external event ──────────────────────────────────────────
 
     [Fact]
-    public async Task Workflow_completes_with_Done_when_Merged_event_arrives()
+    public async Task Workflow_merges_then_completes_Done_when_ReadyToMerge_event_arrives()
     {
         var ctx = new FakeWorkflowContext();
         SetupHappyPathUntilReviewLoop(ctx);
         ctx.SetReviewPollResults(
-            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow),
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
-        // Only Merged event queued — race resolves deterministically on Merged.
-        ctx.CompleteExternalEvent("Merged", new ReviewEventPayload(7));
+            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow, Mergeable: null));
+        ctx.CompleteExternalEvent("ReadyToMerge", new ReviewEventPayload(7));
 
         var workflow = new DeveloperTaskWorkflow();
         var result = await workflow.RunAsync(ctx, Input());
 
+        ctx.ActivityCalls.Should().Contain(c => c.Name == nameof(MergePullRequestActivity));
         result.Outcome.Should().Be("Done");
-        ctx.ActivityCalls.Should().Contain(c => c.Name == nameof(DoneActivity));
         var doneCall = ctx.ActivityCalls.Last(c => c.Name == nameof(DoneActivity));
         ((DoneActivityInput)doneCall.Input!).Success.Should().BeTrue();
+    }
+
+    // ── Direct-poll merge gate ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task Workflow_merges_on_direct_poll_when_approved_green_and_mergeable()
+    {
+        var ctx = new FakeWorkflowContext();
+        SetupHappyPathUntilReviewLoop(ctx);
+        ctx.SetReviewPollResults(
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+
+        var workflow = new DeveloperTaskWorkflow();
+        var result = await workflow.RunAsync(ctx, Input());
+
+        ctx.ActivityCalls.Should().Contain(c => c.Name == nameof(MergePullRequestActivity));
+        var mergeCall = ctx.ActivityCalls.First(c => c.Name == nameof(MergePullRequestActivity));
+        ((MergePullRequestActivityInput)mergeCall.Input!).BranchName.Should().Be("agent/branch");
+        result.Outcome.Should().Be("Done");
+    }
+
+    [Fact]
+    public async Task Workflow_keeps_polling_when_approved_but_checks_pending()
+    {
+        var ctx = new FakeWorkflowContext();
+        SetupHappyPathUntilReviewLoop(ctx);
+        ctx.SetReviewPollResults(
+            // First poll: approved but checks not green yet → must NOT merge, must loop.
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, false, null, DateTimeOffset.UtcNow, Mergeable: null),
+            // Second poll (after timer): now green + mergeable → merge + Done.
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+        ctx.AutoCompleteTimers = true;
+
+        var workflow = new DeveloperTaskWorkflow();
+        var result = await workflow.RunAsync(ctx, Input());
+
+        ctx.ActivityCalls.Count(c => c.Name == nameof(WaitForReviewActivity)).Should().BeGreaterThanOrEqualTo(2);
+        ctx.ActivityCalls.Should().Contain(c => c.Name == nameof(MergePullRequestActivity));
+        result.Outcome.Should().Be("Done");
+    }
+
+    [Fact]
+    public async Task Workflow_leaves_item_in_review_and_reports_MergeFailed_when_not_mergeable()
+    {
+        var ctx = new FakeWorkflowContext();
+        SetupHappyPathUntilReviewLoop(ctx);
+        ctx.SetActivityResult(nameof(MergePullRequestActivity),
+            new MergePullRequestResult(MergeOutcome.NotMergeable));
+        ctx.SetReviewPollResults(
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+
+        var workflow = new DeveloperTaskWorkflow();
+        var result = await workflow.RunAsync(ctx, Input());
+
+        result.Outcome.Should().Be("MergeFailed");
+        var doneCall = ctx.ActivityCalls.Last(c => c.Name == nameof(DoneActivity));
+        var doneInput = (DoneActivityInput)doneCall.Input!;
+        doneInput.Success.Should().BeFalse();
+        doneInput.PullRequestNumber.Should().Be(7); // non-null PR ⇒ DoneActivity leaves the item In-review
     }
 
     // ── ChangesRequested external event → modify ─────────────────────────────
@@ -101,10 +160,10 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         SetupHappyPathUntilReviewLoop(ctx);
         ctx.SetReviewPollResults(
             // First poll → Pending so the race arms; ChangesRequested event wins below.
-            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow),
-            // After ModifyCodeActivity loops back: second poll → Approved+Merged so workflow exits.
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
-        // Only ChangesRequested queued — Merged event task remains pending → ChangesRequested wins
+            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow, Mergeable: null),
+            // After ModifyCodeActivity loops back: second poll → Approved+green+mergeable so workflow merges.
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+        // Only ChangesRequested queued — ReadyToMerge event task remains pending → ChangesRequested wins
         // deterministically.
         ctx.CompleteExternalEvent("ChangesRequested", new ReviewEventPayload(7));
 
@@ -124,9 +183,9 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         SetupHappyPathUntilReviewLoop(ctx);
         ctx.SetReviewPollResults(
             // First poll → Pending; the race fires; only the timer is completed (no events queued).
-            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow),
-            // Second poll (after timer) → Approved+Merged: the workflow uses the direct success branch.
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
+            new WaitForReviewResult(PullRequestReviewState.Pending, false, false, null, DateTimeOffset.UtcNow, Mergeable: null),
+            // Second poll (after timer) → Approved+green+mergeable: the workflow uses the direct merge branch.
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
         ctx.AutoCompleteTimers = true;
 
         var workflow = new DeveloperTaskWorkflow();

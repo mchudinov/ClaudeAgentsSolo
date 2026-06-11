@@ -34,7 +34,9 @@ public sealed class DeveloperTaskWorkflowSavesAgentSessionTests
             new PlanResult(AgentRunOutcome.Completed, prNumber, ToolCallsUsed: 5, TerminationReason: null));
         ctx.SetActivityResult(nameof(CreatePullRequestActivity), new CreatePullRequestResult(prNumber));
         ctx.SetActivityResult(nameof(WaitForReviewActivity),
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
+            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+        ctx.SetActivityResult(nameof(MergePullRequestActivity),
+            new MergePullRequestResult(MergeOutcome.Merged));
         ctx.SetActivityResult(nameof(DoneActivity), (object?)null);
     }
 

@@ -36,7 +36,9 @@ public sealed class RetryPolicyTests
             new PlanResult(AgentRunOutcome.Completed, prNumber, 5, null));
         ctx.SetActivityResult(nameof(CreatePullRequestActivity), new CreatePullRequestResult(prNumber));
         ctx.SetActivityResult(nameof(WaitForReviewActivity),
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
+            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow, Mergeable: true));
+        ctx.SetActivityResult(nameof(MergePullRequestActivity),
+            new MergePullRequestResult(MergeOutcome.Merged));
         ctx.SetActivityResult(nameof(DoneActivity), (object?)null);
     }
 
@@ -70,10 +72,10 @@ public sealed class RetryPolicyTests
     {
         var ctx = new FakeWorkflowContext();
         PopulateHappyPathResults(ctx);
-        // First poll returns ChangesRequested → direct ModifyCode call → second poll Approved+Merged.
+        // First poll returns ChangesRequested → direct ModifyCode call → second poll Approved+green+mergeable.
         ctx.SetReviewPollResults(
-            new WaitForReviewResult(PullRequestReviewState.ChangesRequested, false, false, "fix", DateTimeOffset.UtcNow),
-            new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, DateTimeOffset.UtcNow));
+            new WaitForReviewResult(PullRequestReviewState.ChangesRequested, false, false, "fix", DateTimeOffset.UtcNow, Mergeable: null),
+            new WaitForReviewResult(PullRequestReviewState.Approved, false, true, null, DateTimeOffset.UtcNow, Mergeable: true));
         ctx.SetActivityResult(nameof(ModifyCodeActivity),
             new ModifyCodeResult(AgentRunOutcome.Completed, 3, null));
 

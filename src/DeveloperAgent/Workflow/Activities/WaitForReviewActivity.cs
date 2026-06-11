@@ -18,7 +18,7 @@ namespace DeveloperAgent.Workflow.Activities;
 /// <c>WaitForExternalEventAsync</c> arms can win the next race:
 /// <list type="bullet">
 ///   <item><c>ChangesRequested</c> when the PR review state is ChangesRequested.</item>
-///   <item><c>Merged</c> when the PR is merged AND approved.</item>
+///   <item><c>ReadyToMerge</c> when the PR is approved, checks are green, and GitHub reports it mergeable.</item>
 ///   <item>No event is raised for Pending — the workflow's timer arm wins instead.</item>
 /// </list>
 /// The workflow instance ID is taken from <see cref="WorkflowActivityContext.InstanceId"/>.
@@ -28,8 +28,8 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
     /// <summary>Event name raised when the PR has been marked ChangesRequested.</summary>
     public const string ChangesRequestedEventName = "ChangesRequested";
 
-    /// <summary>Event name raised when the PR has been merged with an Approved review.</summary>
-    public const string MergedEventName = "Merged";
+    /// <summary>Event raised when the PR is approved, green, and mergeable — i.e. ready to be merged.</summary>
+    public const string ReadyToMergeEventName = "ReadyToMerge";
 
     private readonly ILogger<WaitForReviewActivity> _logger;
     private readonly IGitHubProjectService _github;
@@ -72,11 +72,11 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
         // WaitForExternalEventAsync arm wins immediately rather than waiting for the timer.
         // Pending → raise nothing (workflow's timer arm drives cadence).
         var payload = new ReviewEventPayload(input.PullRequestNumber);
-        if (status.Merged && status.Review == PullRequestReviewState.Approved)
+        if (status.Review == PullRequestReviewState.Approved && status.ChecksGreen && status.Mergeable == true)
         {
             await _workflowClient.RaiseEventAsync(
                 instanceId: context.InstanceId,
-                eventName: MergedEventName,
+                eventName: ReadyToMergeEventName,
                 eventPayload: payload,
                 cancellation: ct);
         }
@@ -94,6 +94,7 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
             Merged: status.Merged,
             ChecksGreen: status.ChecksGreen,
             FeedbackMarkdown: string.IsNullOrEmpty(feedbackMarkdown) ? null : feedbackMarkdown,
-            PolledAtUtc: polledAt);
+            PolledAtUtc: polledAt,
+            Mergeable: status.Mergeable);
     }
 }

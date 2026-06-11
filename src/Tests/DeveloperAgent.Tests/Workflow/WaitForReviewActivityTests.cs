@@ -158,12 +158,12 @@ public sealed class WaitForReviewActivityTests
     }
 
     [Fact]
-    public async Task RunAsync_raises_Merged_event_when_PR_is_merged_and_approved()
+    public async Task RunAsync_raises_ReadyToMerge_event_when_approved_green_and_mergeable()
     {
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "sha7", null));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, ChecksGreen: true, Merged: false, "sha7", Mergeable: true));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -176,9 +176,49 @@ public sealed class WaitForReviewActivityTests
 
         await workflowClient.Received(1).RaiseEventAsync(
             FakeInstanceId,
-            "Merged",
+            "ReadyToMerge",
             Arg.Any<object>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_does_not_raise_ReadyToMerge_when_checks_not_green()
+    {
+        var github = Substitute.For<IGitHubProjectService>();
+        var workflowClient = Substitute.For<IDaprWorkflowClient>();
+        github.GetPullRequestStatusAsync(8, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(8, PullRequestReviewState.Approved, ChecksGreen: false, Merged: false, "sha8", Mergeable: true));
+        github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(string.Empty);
+
+        var activity = new WaitForReviewActivity(
+            NullLogger<WaitForReviewActivity>.Instance,
+            github,
+            workflowClient);
+
+        await activity.RunAsync(MakeContext(), MakeInput(8));
+
+        await workflowClient.DidNotReceiveWithAnyArgs().RaiseEventAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_does_not_raise_ReadyToMerge_when_mergeability_unknown()
+    {
+        var github = Substitute.For<IGitHubProjectService>();
+        var workflowClient = Substitute.For<IDaprWorkflowClient>();
+        github.GetPullRequestStatusAsync(9, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(9, PullRequestReviewState.Approved, ChecksGreen: true, Merged: false, "sha9", Mergeable: null));
+        github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(string.Empty);
+
+        var activity = new WaitForReviewActivity(
+            NullLogger<WaitForReviewActivity>.Instance,
+            github,
+            workflowClient);
+
+        await activity.RunAsync(MakeContext(), MakeInput(9));
+
+        await workflowClient.DidNotReceiveWithAnyArgs().RaiseEventAsync(default!, default!, default!, default);
     }
 
     [Fact]

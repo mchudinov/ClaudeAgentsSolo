@@ -128,7 +128,7 @@ public sealed class WorkflowModelsTests
     public void WaitForReviewResult_round_trips()
     {
         var polledAt = DateTimeOffset.UtcNow;
-        var original = new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, polledAt);
+        var original = new WaitForReviewResult(PullRequestReviewState.Approved, true, true, null, polledAt, Mergeable: true);
         RoundTrip(original).Should().Be(original);
     }
 
@@ -136,7 +136,7 @@ public sealed class WorkflowModelsTests
     public void WaitForReviewResult_with_feedback_round_trips()
     {
         var polledAt = DateTimeOffset.UtcNow;
-        var original = new WaitForReviewResult(PullRequestReviewState.ChangesRequested, false, false, "Fix the null check", polledAt);
+        var original = new WaitForReviewResult(PullRequestReviewState.ChangesRequested, false, false, "Fix the null check", polledAt, Mergeable: null);
         RoundTrip(original).Should().Be(original);
     }
 }
