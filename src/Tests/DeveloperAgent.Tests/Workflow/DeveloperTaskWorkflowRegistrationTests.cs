@@ -36,6 +36,7 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
     [InlineData(typeof(TestActivity))]
     [InlineData(typeof(CreatePullRequestActivity))]
     [InlineData(typeof(WaitForReviewActivity))]
+    [InlineData(typeof(MergePullRequestActivity))]
     [InlineData(typeof(DoneActivity))]
     [InlineData(typeof(CompactMemoryActivity))]
     [InlineData(typeof(LoadAgentSessionActivity))]
@@ -151,6 +152,7 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
             "TestActivity",
             "CreatePullRequestActivity",
             "WaitForReviewActivity",
+            "MergePullRequestActivity",
             "DoneActivity",
             "CompactMemoryActivity"
         };

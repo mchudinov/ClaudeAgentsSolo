@@ -133,6 +133,13 @@ public sealed record DoneActivityInput(
     bool Success,
     long ToolCallsUsed);
 
+/// <summary>Input for <see cref="Activities.MergePullRequestActivity"/>.</summary>
+public sealed record MergePullRequestActivityInput(
+    string ProjectItemId,
+    string ContentNodeId,
+    int PullRequestNumber,
+    string BranchName);
+
 // ── Per-activity result records ───────────────────────────────────────────────
 
 /// <summary>Result of <see cref="Activities.TriageActivity"/>.</summary>
@@ -158,3 +165,11 @@ public sealed record CreatePullRequestResult(int PullRequestNumber);
 
 /// <summary>Result of <see cref="Activities.WaitForReviewActivity"/>.</summary>
 public sealed record WaitForReviewResult(PullRequestReviewState ReviewState, bool Merged, bool ChecksGreen, string? FeedbackMarkdown, DateTimeOffset PolledAtUtc);
+
+/// <summary>Result of <see cref="Activities.MergePullRequestActivity"/>.</summary>
+/// <param name="Outcome">Merged/AlreadyMerged → success; NotMergeable → the workflow's failure path.</param>
+public sealed record MergePullRequestResult(MergeOutcome Outcome)
+{
+    /// <summary>True when the PR ended up merged (this call or already).</summary>
+    public bool Succeeded => Outcome is MergeOutcome.Merged or MergeOutcome.AlreadyMerged;
+}

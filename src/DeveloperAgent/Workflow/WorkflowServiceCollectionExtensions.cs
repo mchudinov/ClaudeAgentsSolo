@@ -41,6 +41,7 @@ public static class WorkflowServiceCollectionExtensions
             opt.RegisterActivity<TestActivity>();
             opt.RegisterActivity<CreatePullRequestActivity>();
             opt.RegisterActivity<WaitForReviewActivity>();
+            opt.RegisterActivity<MergePullRequestActivity>();
             opt.RegisterActivity<DoneActivity>();
             opt.RegisterActivity<CompactMemoryActivity>();
             // Step-18: AgentSession persistence activities.
