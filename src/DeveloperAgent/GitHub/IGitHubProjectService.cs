@@ -78,4 +78,13 @@ public interface IGitHubProjectService
     /// Returns true if the configured GitHub Project exists and is accessible on GitHub.
     /// </summary>
     Task<bool> ProjectExistsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Squash-merges the pull request (the developer-agent's chosen merge method). Idempotent:
+    /// an already-merged PR returns <see cref="MergeOutcome.AlreadyMerged"/>.
+    /// </summary>
+    Task<MergeOutcome> SquashMergePullRequestAsync(int pullRequestNumber, CancellationToken ct);
+
+    /// <summary>Deletes the head branch. A missing branch is a no-op.</summary>
+    Task DeleteBranchAsync(string branchName, CancellationToken ct);
 }

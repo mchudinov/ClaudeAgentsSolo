@@ -190,4 +190,29 @@ public sealed class GitHubProjectServiceTests
 
         await client.Received(1).SubmitReviewAsync(9, ReviewVerdict.Approve, "LGTM", Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task SquashMergePullRequestAsync_calls_client_with_Squash_method()
+    {
+        var client = Client();
+        client.MergePullRequestAsync(7, MergeMethod.Squash, Arg.Any<CancellationToken>())
+            .Returns(MergeOutcome.Merged);
+        var facade = CreateFacade(client);
+
+        var outcome = await facade.SquashMergePullRequestAsync(7, CancellationToken.None);
+
+        outcome.Should().Be(MergeOutcome.Merged);
+        await client.Received(1).MergePullRequestAsync(7, MergeMethod.Squash, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteBranchAsync_is_a_pass_through_to_the_client()
+    {
+        var client = Client();
+        var facade = CreateFacade(client);
+
+        await facade.DeleteBranchAsync("agent/feature-x", CancellationToken.None);
+
+        await client.Received(1).DeleteBranchAsync("agent/feature-x", Arg.Any<CancellationToken>());
+    }
 }

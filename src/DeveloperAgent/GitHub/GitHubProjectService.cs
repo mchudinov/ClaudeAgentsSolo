@@ -112,4 +112,10 @@ internal sealed class GitHubProjectService : IGitHubProjectService
 
     public Task<bool> ProjectExistsAsync(CancellationToken ct)
         => _client.ProjectExistsAsync(ct);
+
+    public Task<MergeOutcome> SquashMergePullRequestAsync(int pullRequestNumber, CancellationToken ct)
+        => _client.MergePullRequestAsync(pullRequestNumber, MergeMethod.Squash, ct);
+
+    public Task DeleteBranchAsync(string branchName, CancellationToken ct)
+        => _client.DeleteBranchAsync(branchName, ct);
 }
