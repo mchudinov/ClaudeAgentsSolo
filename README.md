@@ -117,17 +117,20 @@ the model is reached only if both deterministic pre-checks pass:
 
 ### Configuration
 
-The reviewer's config is split across two sections — **the same `Agent` settings structure the
-DeveloperAgent host uses**, plus a `Reviewer` section for the review-specific knobs:
+The reviewer's config is split across three sections — **the same `Agent` and `ScopeLimits`
+structures the DeveloperAgent host uses**, plus a `Reviewer` section for the review-specific knobs:
 
 - **`Agent`** — agent identity and runtime: `Name`, `Model`, `Effort`, `PersonaPath`,
   `PollIntervalSeconds` (mirrors the developer host; `ReviewPollIntervalSeconds` /
   `FirstRetryIntervalSeconds` are present for structural parity but unused by the stateless
-  reviewer). Bound to a `ReviewerAgent.Configuration.AgentOptions` record; `Model`/`PersonaPath`
-  are also bound onto the engine's `ReviewerOptions` and `PollIntervalSeconds` onto
-  `ReviewPollingOptions` from these same keys.
-- **`Reviewer`** — review-specific: the oversized-diff caps, required PR-body sections, and the
-  idempotency/draft/author filters.
+  reviewer). Bound to a `ReviewerAgent.Configuration.AgentOptions` record; `Model`, `Effort`, and
+  `PersonaPath` are also bound onto the engine's `ReviewerOptions`, and `PollIntervalSeconds` onto
+  `ReviewPollingOptions`, from these same keys (so they cannot drift).
+- **`ScopeLimits`** — the deterministic oversized-diff caps (`MaxDiffFiles` / `MaxDiffLines`), the
+  reviewer analog of the developer host's `ScopeLimits` section; bound onto `ReviewerOptions`.
+- **`Reviewer`** — the remaining review-specific knobs: required PR-body sections
+  (`RequiredPrBodySections`) and the idempotency/draft/author filters (`ReviewerLogin`,
+  `SkipDrafts`, `AuthorAllowList`).
 
 Defaults below are the canonical values from `src/ReviewerAgent/appsettings.json`:
 
@@ -142,9 +145,11 @@ Defaults below are the canonical values from `src/ReviewerAgent/appsettings.json
     "ReviewPollIntervalSeconds": 60,
     "FirstRetryIntervalSeconds": 2
   },
-  "Reviewer": {
+  "ScopeLimits": {
     "MaxDiffFiles": 50,
-    "MaxDiffLines": 2000,
+    "MaxDiffLines": 2000
+  },
+  "Reviewer": {
     "RequiredPrBodySections": [
       "## Summary",
       "## User-visible behavior",
@@ -158,9 +163,11 @@ Defaults below are the canonical values from `src/ReviewerAgent/appsettings.json
 }
 ```
 
-> **`Effort` is not yet wired into the model call** — it is configured (matching the developer
-> host's `Agent` section) but, as on the DeveloperAgent, does not currently change model-reasoning
-> depth.
+> **`Effort` is wired into the model call.** Both agents apply the configured `Agent:Effort` to the
+> Anthropic request as `output_config.effort` — `AnthropicRequestOptions.EffortFactory` builds a
+> `ChatOptions.RawRepresentationFactory` delegate that the Anthropic adapter invokes per request
+> (`ReviewerAgent.RunPersonaScanAsync` here, `AnthropicAgentRunner` on the developer). A blank value
+> leaves the provider default in place.
 
 > **`ReviewerLogin` must be set** to the GitHub login the reviewer's token authenticates as.
 > Left blank, idempotency is disabled (no prior review matches), so every sweep re-reviews and
@@ -184,7 +191,7 @@ Dapr State + Redis        = runtime state, sessions, task state, actor state, wo
 | Layer                           | Responsibility                                                |
 | ------------------------------- | ------------------------------------------------------------- |
 | Microsoft Agent Framework       | Creates the Claude-powered developer agent                    |
-| Anthropic provider              | Connects the agent to Claude / `claude-opus-4-7`              |
+| Anthropic provider              | Connects the agent to Claude / `claude-opus-4-8`              |
 | MCP C# SDK                      | Connects to GitHub MCP and Context7 MCP                       |
 | Agent Framework MCP integration | Converts MCP tools into `AITool` objects                      |
 | Dapr Workflow                   | Owns the long-running task lifecycle                          |
@@ -194,3 +201,123 @@ Dapr State + Redis        = runtime state, sessions, task state, actor state, wo
 | GitHub GraphQL/REST service     | Deterministic project/PR operations                           |
 | Build/test runner               | Executes `dotnet restore`, `dotnet build`, `dotnet test`      |
 | Policy engine                   | Controls what the agent is allowed to do                      |
+
+### Configuration
+
+The developer host's configuration lives in `src/DeveloperAgent/appsettings.json` (there is no
+monolithic `Settings.cs`). Host-policy option records live in `DeveloperAgent/Configuration/`
+(`AgentOptions`, `ScopeLimitOptions`, `MemoryOptions`, `TriageOptions`, `AnthropicOptions`,
+`ProjectStateNames`, the `SecretsBundle*` providers); library-owned records bind from the **same**
+file but live with their library — `SandboxOptions` / `ContainerRuntimeOptions` in `Agent.Sandbox`,
+`WorkspaceOptions` / `DiffScopeLimitOptions` / `WorkspaceRootOptions` in `Agent.Workspace`,
+`McpOptions` in `Agent.Mcp`, and the GitHub identity records (`GitHubOptions` / `RepositoryOptions`
+/ `ProjectOptions`) in `Agent.GitHub`. A record and the config section that fills it therefore live
+in **different projects** — keep them in sync.
+
+- **`Agent`** — identity + runtime: `Name`, `Model` (`claude-opus-4-8`), `Effort`, `PersonaPath`,
+  `PollIntervalSeconds` (Ready-board poll), `ReviewPollIntervalSeconds` (the in-workflow review-poll
+  cadence), and `FirstRetryIntervalSeconds` (activity back-off seed). Bound to
+  `DeveloperAgent.Configuration.AgentOptions`.
+- **`ScopeLimits`** — hard per-run/PR caps that halt the agent on breach: `MaxExecutionTimeSeconds`,
+  `MaxModelTurns`, `MaxToolCalls`, `MaxRetryCount` (the single source feeding
+  `TaskInput.MaxRetryAttempts`), and the composite PR-size limit `MaxPRChangedFiles` /
+  `MaxPRChangedLines`. The pre-push diff-scope caps `MaxChangedFiles` / `MaxChangedLines` bind from
+  this same section onto `Agent.Workspace`'s `DiffScopeLimitOptions`.
+- **`Memory`** — the §P2-G memory layer: an `Enabled` master switch plus the window sizes
+  (`MaxRecentTurns`, `MaxInjectedPerScope`, `MaxStoredPerScope`) that bound the MAF chat-history +
+  memory-context providers.
+- **`Triage`** — the relevance-triage gate: `Enabled`, plus the plain-language `RepoScope` and
+  `AgentSkill` it judges each item against before acquire/branch/plan; rejected items are parked in
+  the write-only `Backlog` column.
+- **`GitHub`** — repo/project identity (`Owner`, `Repository`, `Project`), the `States` column-name
+  map (bound onto `ProjectStateNames`), and `TokenSecretName`.
+- **`Workspace`** — the task workspace `RootPath` and the `AllowedCommands` shell allow-list (the
+  LLD sandbox contract).
+- **`Sandbox`** — the command/path deny policy (`DeniedCommands`, `DenyPathPatterns`,
+  `SecretFileRegexes`) and the egress `AllowedHosts` allow-list (enforced by `HostAllowlistHandler`).
+- **`ContainerRuntime`** / **`McpServers`** — both ship **disabled by default**: the optional Docker
+  command sandbox, and the GitHub + Context7 stdio MCP servers.
+- **`Anthropic`** / **`HttpResilience`** — the Anthropic API-key secret name and the per-attempt
+  HTTP timeout used by the standard resilience handler.
+
+Defaults below are abbreviated from `src/DeveloperAgent/appsettings.json` (the full
+`Sandbox.DeniedCommands` deny list and the `Serilog` block are elided for brevity):
+
+```jsonc
+{
+  "Agent": {
+    "Name": "DeveloperAgent",
+    "Model": "claude-opus-4-8",
+    "Effort": "xhigh",
+    "PersonaPath": "personas/developer.md",
+    "PollIntervalSeconds": 60,
+    "ReviewPollIntervalSeconds": 60,
+    "FirstRetryIntervalSeconds": 2
+  },
+  "ScopeLimits": {
+    "MaxChangedFiles": 50,
+    "MaxChangedLines": 2000,
+    "MaxExecutionTimeSeconds": 1800,
+    "MaxModelTurns": 40,
+    "MaxToolCalls": 200,
+    "MaxRetryCount": 3,
+    "MaxPRChangedFiles": 50,
+    "MaxPRChangedLines": 2000
+  },
+  "Anthropic": { "ApiKeySecretName": "anthropic-api-key" },
+  "Memory": {
+    "Enabled": true,
+    "MaxRecentTurns": 20,
+    "MaxInjectedPerScope": 10,
+    "MaxStoredPerScope": 50
+  },
+  "HttpResilience": { "AttemptTimeoutSeconds": 60 },
+  "GitHub": {
+    "Owner": "mchudinov",
+    "Repository": { "Name": "TicTacToe2", "Url": "https://github.com/mchudinov/TicTacToe2", "DefaultBranch": "main" },
+    "Project":    { "Name": "TicTacToe", "Number": 4, "OwnerType": "User" },
+    "States":     { "Backlog": "Backlog", "Ready": "Ready", "InProgress": "In Progress", "InReview": "In Review", "Done": "Done" },
+    "TokenSecretName": "github-token"
+  },
+  "Triage": {
+    "Enabled": true,
+    "RepoScope": "A C#/.NET application repository…",
+    "AgentSkill": "A senior .NET 10 C# developer that implements coding tasks end-to-end…"
+  },
+  "Workspace": {
+    "RootPath": "/workspace",
+    "AllowedCommands": [ "dotnet", "git", "gh", "ls", "dir", "pwd", "cat" ]
+  },
+  "Sandbox": {
+    "DenyPathPatterns": [ "~/.ssh/**", ".env*", ".git/config" ],
+    "SecretFileRegexes": [],
+    "DeniedCommands": [ /* 19 deny rules — no-curl, no-git-force-push, no-gh-secret-set, … */ ],
+    "AllowedHosts": [ "api.anthropic.com", "api.github.com", "*.githubusercontent.com", "context7.com" ]
+  },
+  "ContainerRuntime": {
+    "Enabled": false,
+    "Image": "mcr.microsoft.com/dotnet/sdk:10.0",
+    "MountPath": "/workspace",
+    "Cpus": "2", "Memory": "2g", "NetworkMode": "none", "RuntimeExecutable": "docker"
+  },
+  "McpServers": {
+    "Servers": {
+      "GitHub":   { "Enabled": false, "Command": "npx", "Arguments": [ "-y", "@modelcontextprotocol/server-github" ], "Env": {} },
+      "Context7": { "Enabled": false, "Command": "npx", "Arguments": [ "-y", "@upstash/context7-mcp" ], "Env": {} }
+    }
+  },
+  "Kestrel": { "EndPoints": { "Http": { "Url": "http://*:8089" } } }
+}
+```
+
+> **Don't seed list/array option defaults in the records.** The `ConfigurationBinder` *appends* a
+> bound array onto whatever the property already holds, so a non-empty C# default plus the same list
+> in `appsettings.json` loads twice (Step-41 fixed exactly this: 38 deny rules instead of 19). The
+> sandbox/workspace lists therefore default to `[]` in their `Agent.Sandbox` / `Agent.Workspace`
+> records and live **solely** in `appsettings.json`; `Program.cs` requires them non-empty via
+> `ValidateOnStart` (fail-closed).
+
+> **`Effort` is wired into the model call** (see the reviewer note above): `AnthropicAgentRunner`
+> applies the configured `Agent:Effort` as `output_config.effort` on each Anthropic request.
+
+The service binds Kestrel to `http://*:8089` (the ReviewerAgent uses `8090`).
