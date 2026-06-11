@@ -143,8 +143,24 @@ public sealed class ReviewerAgent : IReviewerAgent
     private async Task<ReviewResult> PostAsync(
         int pullRequestNumber, ReviewVerdict verdict, string summary, bool usedModel, CancellationToken ct)
     {
-        await _gitHub.SubmitReviewAsync(pullRequestNumber, verdict, summary, ct).ConfigureAwait(false);
-        return new ReviewResult(verdict, summary, usedModel);
+        var body = FormatReviewBody(verdict, summary);
+        await _gitHub.SubmitReviewAsync(pullRequestNumber, verdict, body, ct).ConfigureAwait(false);
+        return new ReviewResult(verdict, body, usedModel);
+    }
+
+    /// <summary>
+    /// Builds the review body posted to GitHub. An <see cref="ReviewVerdict.Approve"/> verdict always
+    /// leads with an explicit "Approved" line so the posted comment states the approval in plain words
+    /// (the GitHub APPROVE event by itself is easy to miss in the UI); the model's summary, when present,
+    /// follows it. Other verdicts post their summary unchanged.
+    /// </summary>
+    private static string FormatReviewBody(ReviewVerdict verdict, string summary)
+    {
+        if (verdict != ReviewVerdict.Approve)
+            return summary;
+
+        var trimmed = summary?.Trim() ?? string.Empty;
+        return trimmed.Length == 0 ? "Approved" : $"Approved\n\n{trimmed}";
     }
 
     private static string BuildScanPrompt(PullRequestReviewContext context)

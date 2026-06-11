@@ -138,6 +138,26 @@ public sealed class ReviewerAgentTests
     }
 
     [Fact]
+    public async Task Approved_PR_posts_body_that_leads_with_an_explicit_Approved_comment()
+    {
+        var ctx = new PullRequestReviewContext(PrNumber, CleanBody, ChangedFiles: 2, ChangedLines: 30, UnifiedDiff: "diff");
+        var gitHub = GitHubReturning(ctx);
+        var reviewer = BuildReviewer(gitHub, ScriptedChatClient("approve", "Correct, tested, consistent."));
+
+        var result = await reviewer.ReviewAsync(PrNumber, CancellationToken.None);
+
+        result.Verdict.Should().Be(ReviewVerdict.Approve);
+        // The posted review body must state the approval in plain words — the GitHub APPROVE event
+        // alone is easy to miss in the UI — while preserving the model's summary after it.
+        result.Summary.Should().StartWith("Approved");
+        result.Summary.Should().Contain("Correct, tested, consistent.");
+        await gitHub.Received(1).SubmitReviewAsync(
+            PrNumber, ReviewVerdict.Approve,
+            Arg.Is<string>(b => b.StartsWith("Approved") && b.Contains("Correct, tested, consistent.")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Body_missing_a_section_requests_changes_without_calling_model()
     {
         var incompleteBody =
@@ -196,6 +216,8 @@ public sealed class ReviewerAgentTests
         result.Verdict.Should().Be(ReviewVerdict.RequestChanges);
         result.UsedModel.Should().BeTrue();
         result.Summary.Should().Contain("null path");
+        result.Summary.Should().NotStartWith("Approved",
+            because: "only an Approve verdict gets the explicit 'Approved' lead-in");
     }
 
     [Fact]
