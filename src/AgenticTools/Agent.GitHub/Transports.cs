@@ -115,6 +115,16 @@ internal interface IRestTransport
 
     /// <summary>Lists the repository's open pull requests (number, head SHA, draft flag, author).</summary>
     Task<IReadOnlyList<RestOpenPullRequest>> ListOpenPullRequestsAsync(string owner, string repo, CancellationToken ct);
+
+    /// <summary>
+    /// Attempts the merge. Returns <see cref="MergeOutcome.Merged"/> on success or
+    /// <see cref="MergeOutcome.NotMergeable"/> when GitHub refuses (405). Never returns AlreadyMerged —
+    /// that decision is the client's (it checks the PR first).
+    /// </summary>
+    Task<MergeOutcome> MergePullRequestAsync(string owner, string repo, int number, MergeMethod method, CancellationToken ct);
+
+    /// <summary>Deletes the branch ref. Treats a missing ref (404) as success.</summary>
+    Task DeleteBranchAsync(string owner, string repo, string branchName, CancellationToken ct);
 }
 
 // ── Concrete implementations ──────────────────────────────────────────────────
@@ -403,4 +413,42 @@ internal sealed class OctokitRestTransport : IRestTransport
             return false;
         }
     }
+
+    public async Task<MergeOutcome> MergePullRequestAsync(
+        string owner, string repo, int number, MergeMethod method, CancellationToken ct)
+    {
+        var request = new MergePullRequest { MergeMethod = ToOctokitMergeMethod(method) };
+        try
+        {
+            await GetClient().PullRequest.Merge(owner, repo, number, request).ConfigureAwait(false);
+            return MergeOutcome.Merged;
+        }
+        catch (PullRequestNotMergeableException)
+        {
+            // GitHub returns 405 when the PR cannot be merged: conflict with base, failing required
+            // checks, or branch protection. The client turns this into the workflow's failure path.
+            return MergeOutcome.NotMergeable;
+        }
+    }
+
+    public async Task DeleteBranchAsync(string owner, string repo, string branchName, CancellationToken ct)
+    {
+        try
+        {
+            await GetClient().Git.Reference.Delete(owner, repo, $"heads/{branchName}").ConfigureAwait(false);
+        }
+        catch (NotFoundException)
+        {
+            // Branch already gone (e.g. a retried delete, or GitHub auto-deleted it). Idempotent success.
+            // Mirrors the NotFoundException-swallow in RepositoryExistsAsync.
+        }
+    }
+
+    private static Octokit.PullRequestMergeMethod ToOctokitMergeMethod(MergeMethod method) => method switch
+    {
+        MergeMethod.Merge => Octokit.PullRequestMergeMethod.Merge,
+        MergeMethod.Squash => Octokit.PullRequestMergeMethod.Squash,
+        MergeMethod.Rebase => Octokit.PullRequestMergeMethod.Rebase,
+        _ => throw new ArgumentOutOfRangeException(nameof(method), method, null),
+    };
 }

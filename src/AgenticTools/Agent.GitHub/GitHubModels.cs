@@ -1,5 +1,16 @@
 namespace Agent.GitHub;
 
+/// <summary>How a pull request is merged. Maps to GitHub's three merge methods.</summary>
+public enum MergeMethod { Merge, Squash, Rebase }
+
+/// <summary>Outcome of an attempt to merge a pull request.</summary>
+/// <remarks>
+/// <see cref="Merged"/> and <see cref="AlreadyMerged"/> are both successes — the latter makes the
+/// operation idempotent under workflow retry/replay. <see cref="NotMergeable"/> is a hard failure
+/// (conflict, failing required checks, or branch protection refusing the merge).
+/// </remarks>
+public enum MergeOutcome { Merged, AlreadyMerged, NotMergeable }
+
 /// <summary>Aggregated review verdict for an open pull request.</summary>
 public enum PullRequestReviewState { Pending, ChangesRequested, Approved }
 

@@ -66,4 +66,14 @@ public interface IGitHubProjectsClient
     /// in this set (idempotency without local state).
     /// </summary>
     Task<IReadOnlyList<string>> GetReviewedHeadShasAsync(int pullRequestNumber, string reviewerLogin, CancellationToken ct);
+
+    /// <summary>
+    /// Merges the pull request using <paramref name="method"/>. Idempotent: an already-merged PR
+    /// returns <see cref="MergeOutcome.AlreadyMerged"/> instead of throwing, so a workflow retry or
+    /// replay is safe. A PR GitHub refuses to merge returns <see cref="MergeOutcome.NotMergeable"/>.
+    /// </summary>
+    Task<MergeOutcome> MergePullRequestAsync(int pullRequestNumber, MergeMethod method, CancellationToken ct);
+
+    /// <summary>Deletes the head branch <paramref name="branchName"/>. A missing branch is a no-op (idempotent).</summary>
+    Task DeleteBranchAsync(string branchName, CancellationToken ct);
 }

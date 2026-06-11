@@ -241,6 +241,26 @@ internal sealed class GitHubProjectsClient : IGitHubProjectsClient
         return new PullRequest(pr.Number, pr.HeadSha, pr.HtmlUrl);
     }
 
+    public async Task<MergeOutcome> MergePullRequestAsync(int pullRequestNumber, MergeMethod method, CancellationToken ct)
+    {
+        // Idempotency: a retried or replayed activity can run against a PR that is already merged.
+        // Octokit throws if you merge an already-merged PR, so check first and short-circuit.
+        var pr = await _rest.GetPullRequestAsync(_options.Owner, _options.Repository.Name, pullRequestNumber, ct)
+            .ConfigureAwait(false);
+        if (pr.Merged)
+        {
+            _logger.LogInformation("PR #{Number} already merged; treating merge as a no-op.", pullRequestNumber);
+            return MergeOutcome.AlreadyMerged;
+        }
+
+        _logger.LogInformation("Merging PR #{Number} via {Method}.", pullRequestNumber, method);
+        return await _rest.MergePullRequestAsync(
+            _options.Owner, _options.Repository.Name, pullRequestNumber, method, ct).ConfigureAwait(false);
+    }
+
+    public Task DeleteBranchAsync(string branchName, CancellationToken ct)
+        => _rest.DeleteBranchAsync(_options.Owner, _options.Repository.Name, branchName, ct);
+
     public async Task<PullRequestStatus> GetPullRequestStatusAsync(int pullRequestNumber, CancellationToken ct)
     {
         var prTask = _rest.GetPullRequestAsync(_options.Owner, _options.Repository.Name, pullRequestNumber, ct);
