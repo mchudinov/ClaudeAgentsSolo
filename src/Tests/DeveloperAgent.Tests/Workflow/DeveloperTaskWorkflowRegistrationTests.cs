@@ -135,10 +135,10 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
                      "TaskResult must survive a round-trip");
     }
 
-    // ── All 10 activity types are present in the DeveloperAgent assembly ─────
+    // ── All expected activity types are present in the DeveloperAgent assembly ──
 
     [Fact]
-    public void All_ten_activity_types_exist_in_DeveloperAgent_assembly()
+    public void All_expected_activity_types_exist_in_DeveloperAgent_assembly()
     {
         var assembly = typeof(DeveloperTaskWorkflow).Assembly;
 
@@ -164,7 +164,7 @@ public sealed class DeveloperTaskWorkflowRegistrationTests
 
             type.Should().NotBeNull(
                 because: $"Activity class '{name}' must exist in the DeveloperAgent assembly. " +
-                         "Step-13 requires exactly 10 placeholder activity stubs.");
+                         "every activity the workflow schedules must exist in the DeveloperAgent assembly.");
         }
     }
 }
