@@ -1228,4 +1228,25 @@ public sealed class GitHubProjectsClientTests
         await rest.Received(1).SubmitReviewAsync(
             "test-org", "test-repo", 99, ReviewVerdict.Approve, "LGTM", Arg.Any<CancellationToken>());
     }
+
+    // ── §Step-55: PR mergeability ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPullRequestStatusAsync_surfaces_Mergeable_from_the_pull_request()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+        rest.GetPullRequestAsync("test-org", "test-repo", 7, Arg.Any<CancellationToken>())
+            .Returns(new RestPullRequest(7, "sha7", "https://gh/pr/7", Merged: false, Mergeable: true));
+        rest.GetPullRequestReviewsAsync("test-org", "test-repo", 7, Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RestPullRequestReview>());
+        rest.GetCheckRunsAsync("test-org", "test-repo", "sha7", Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RestCheckRun>());
+
+        var client = CreateClient(graphQL, rest);
+
+        var status = await client.GetPullRequestStatusAsync(7, CancellationToken.None);
+
+        status.Mergeable.Should().BeTrue();
+    }
 }

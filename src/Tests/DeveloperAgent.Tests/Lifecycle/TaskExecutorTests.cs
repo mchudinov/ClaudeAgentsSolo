@@ -43,7 +43,7 @@ public sealed class TaskExecutorTests
 
     private static PullRequestStatus MakeMergedApproved() =>
         new(Number: 99, Review: PullRequestReviewState.Approved,
-            ChecksGreen: true, Merged: true, HeadSha: "abc123");
+            ChecksGreen: true, Merged: true, HeadSha: "abc123", Mergeable: null);
 
     private static AgentRunResult MakeCompleted(PullRequest? pr = null) =>
         new(AgentRunOutcome.Completed, pr, TurnsUsed: 5, ToolCallsUsed: 10, TerminationReason: null);
@@ -146,7 +146,7 @@ public sealed class TaskExecutorTests
             {
                 callCount++;
                 return callCount == 1
-                    ? new PullRequestStatus(pr.Number, PullRequestReviewState.ChangesRequested, false, false, "abc")
+                    ? new PullRequestStatus(pr.Number, PullRequestReviewState.ChangesRequested, false, false, "abc", null)
                     : MakeMergedApproved();
             });
 
@@ -329,7 +329,7 @@ public sealed class TaskExecutorTests
 
         // PR is pending — loop keeps waiting
         github.GetPullRequestStatusAsync(pr.Number, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(pr.Number, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(pr.Number, PullRequestReviewState.Pending, false, false, "abc", null));
 
         var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
 
@@ -379,7 +379,7 @@ public sealed class TaskExecutorTests
         var item = MakeItem() with { State = ProjectState.InReview };
 
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc", null));
 
         var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
 
@@ -420,8 +420,8 @@ public sealed class TaskExecutorTests
             {
                 callCount++;
                 return callCount == 1
-                    ? new PullRequestStatus(7, PullRequestReviewState.ChangesRequested, false, false, "abc")
-                    : new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc");
+                    ? new PullRequestStatus(7, PullRequestReviewState.ChangesRequested, false, false, "abc", null)
+                    : new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc", null);
             });
 
         github.GetReviewFeedbackSinceAsync(7, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
@@ -462,7 +462,7 @@ public sealed class TaskExecutorTests
         var item = MakeItem() with { State = ProjectState.InReview };
 
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc", null));
 
         var executor = BuildExecutor(github, workspaceMgr, gitClient, agentRunner, stateStore, timeProvider);
 
@@ -502,7 +502,7 @@ public sealed class TaskExecutorTests
 
         // PR is in ChangesRequested state
         github.GetPullRequestStatusAsync(pr.Number, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(pr.Number, PullRequestReviewState.ChangesRequested, false, false, "abc"));
+            .Returns(new PullRequestStatus(pr.Number, PullRequestReviewState.ChangesRequested, false, false, "abc", null));
 
         // Feedback fetch throws on first call
         github.GetReviewFeedbackSinceAsync(pr.Number, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
@@ -573,7 +573,7 @@ public sealed class TaskExecutorMetricsTests
         new(Number: number, HeadSha: "abc123", HtmlUrl: $"https://github.com/org/repo/pull/{number}");
 
     private static PullRequestStatus MergedApproved(int prNumber = 99) =>
-        new(prNumber, PullRequestReviewState.Approved, ChecksGreen: true, Merged: true, HeadSha: "abc123");
+        new(prNumber, PullRequestReviewState.Approved, ChecksGreen: true, Merged: true, HeadSha: "abc123", Mergeable: null);
 
     private static AgentRunResult Completed(PullRequest pr, int toolCalls = 7) =>
         new(AgentRunOutcome.Completed, pr, TurnsUsed: 4, ToolCallsUsed: toolCalls, TerminationReason: null);

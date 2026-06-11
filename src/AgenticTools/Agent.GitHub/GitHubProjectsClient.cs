@@ -262,7 +262,8 @@ internal sealed class GitHubProjectsClient : IGitHubProjectsClient
             Review: reviewState,
             ChecksGreen: checksGreen,
             Merged: pr.Merged,
-            HeadSha: pr.HeadSha);
+            HeadSha: pr.HeadSha,
+            Mergeable: pr.Mergeable);
     }
 
     public async Task<PullRequestReviewContext> GetPullRequestForReviewAsync(int pullRequestNumber, CancellationToken ct)

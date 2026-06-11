@@ -247,7 +247,7 @@ public sealed class AgentLifecycleServiceTests
             .Returns(actorState);
 
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc", null));
 
         var service = BuildService(github, daprWorkflowClient, stateStore, timeProvider);
 
@@ -292,7 +292,7 @@ public sealed class AgentLifecycleServiceTests
             .Returns(actorState);
 
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "abc", null));
 
         var service = BuildService(github, daprWorkflowClient, stateStore, timeProvider);
 
@@ -346,7 +346,7 @@ public sealed class AgentLifecycleServiceTests
             ApprovalStatus: ApprovalStatus.WaitingForReview);
         stateStore.TryGetPersistedStateAsync("item-1", Arg.Any<CancellationToken>()).Returns(actorState);
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Pending, false, false, "abc", null));
 
         var inspector = Substitute.For<IWorkflowInstanceInspector>();
         inspector.GetDispositionAsync(

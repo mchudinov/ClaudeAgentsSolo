@@ -26,7 +26,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(99, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "abc", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -48,7 +48,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(99, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(99, PullRequestReviewState.Approved, true, true, "def"));
+            .Returns(new PullRequestStatus(99, PullRequestReviewState.Approved, true, true, "def", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -72,7 +72,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(55, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(55, PullRequestReviewState.ChangesRequested, false, false, "ghi"));
+            .Returns(new PullRequestStatus(55, PullRequestReviewState.ChangesRequested, false, false, "ghi", null));
         github.GetReviewFeedbackSinceAsync(55, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(feedbackText);
 
@@ -95,7 +95,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(77, PullRequestReviewState.Pending, false, false, "jkl"));
+            .Returns(new PullRequestStatus(77, PullRequestReviewState.Pending, false, false, "jkl", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -115,7 +115,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "mno"));
+            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "mno", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -139,7 +139,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(42, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(42, PullRequestReviewState.ChangesRequested, false, false, "sha"));
+            .Returns(new PullRequestStatus(42, PullRequestReviewState.ChangesRequested, false, false, "sha", null));
         github.GetReviewFeedbackSinceAsync(42, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns("please fix");
 
@@ -163,7 +163,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(7, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "sha7"));
+            .Returns(new PullRequestStatus(7, PullRequestReviewState.Approved, true, true, "sha7", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 
@@ -187,7 +187,7 @@ public sealed class WaitForReviewActivityTests
         var github = Substitute.For<IGitHubProjectService>();
         var workflowClient = Substitute.For<IDaprWorkflowClient>();
         github.GetPullRequestStatusAsync(99, Arg.Any<CancellationToken>())
-            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "abc"));
+            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, false, false, "abc", null));
         github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(string.Empty);
 

@@ -15,7 +15,8 @@ internal sealed record RestPullRequest(
     int Number,
     string HeadSha,
     string HtmlUrl,
-    bool Merged);
+    bool Merged,
+    bool? Mergeable = null);
 
 internal sealed record RestPullRequestFile(
     string FileName,
@@ -278,7 +279,7 @@ internal sealed class OctokitRestTransport : IRestTransport
     public async Task<RestPullRequest> GetPullRequestAsync(string owner, string repo, int number, CancellationToken ct)
     {
         var pr = await GetClient().PullRequest.Get(owner, repo, number).ConfigureAwait(false);
-        return new RestPullRequest(pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged);
+        return new RestPullRequest(pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged, pr.Mergeable);
     }
 
     public async Task<string> GetPullRequestBodyAsync(string owner, string repo, int number, CancellationToken ct)

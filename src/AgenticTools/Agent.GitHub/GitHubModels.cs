@@ -71,12 +71,15 @@ public sealed record PullRequest(
 /// <param name="ChecksGreen">True when every check conclusion is in {success, neutral, skipped}.</param>
 /// <param name="Merged">True when the PR has been merged.</param>
 /// <param name="HeadSha">HEAD commit SHA of the head branch at the time this was fetched.</param>
+/// <param name="Mergeable">GitHub's mergeability flag: <c>true</c> mergeable, <c>false</c> conflicting,
+/// <c>null</c> while GitHub is still computing it (treat null as "not yet known").</param>
 public sealed record PullRequestStatus(
     int Number,
     PullRequestReviewState Review,
     bool ChecksGreen,
     bool Merged,
-    string HeadSha);
+    string HeadSha,
+    bool? Mergeable);
 
 /// <summary>An open pull request as surfaced for review scheduling.</summary>
 /// <param name="Number">PR number in the repository.</param>
