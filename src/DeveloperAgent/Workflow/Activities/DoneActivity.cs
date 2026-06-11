@@ -89,6 +89,31 @@ public sealed class DoneActivity : WorkflowActivity<DoneActivityInput, object?>
                 "[{Activity}] Task finished with failure (no PR). Item parked in Backlog. item={ItemId}",
                 nameof(DoneActivity), input.ProjectItemId);
         }
+        else if (input.ParkInBacklog)
+        {
+            // Failure with a PR that was closed without merging. There is no reviewer left to act,
+            // so park the item InReview → Backlog (mirroring the no-PR Step-53 parking, from the
+            // InReview column) for a human to re-triage — rather than leaving it orphaned in
+            // In Review, where it would be re-polled on every agent restart.
+            try
+            {
+                await _github.MoveItemAsync(
+                    input.ProjectItemId,
+                    ProjectState.InReview,
+                    ProjectState.Backlog,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[{Activity}] Failed to park closed-PR item in Backlog. item={ItemId}",
+                    nameof(DoneActivity), input.ProjectItemId);
+            }
+
+            _logger.LogWarning(
+                "[{Activity}] PR#{PrNumber} was closed without merging. Item parked in Backlog. item={ItemId}",
+                nameof(DoneActivity), input.PullRequestNumber, input.ProjectItemId);
+        }
         else
         {
             // Failure with a PR open: leave the item in InReview so the human reviewer can

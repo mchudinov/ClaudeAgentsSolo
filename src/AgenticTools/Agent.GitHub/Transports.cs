@@ -16,7 +16,11 @@ internal sealed record RestPullRequest(
     string HeadSha,
     string HtmlUrl,
     bool Merged,
-    bool? Mergeable = null);
+    bool? Mergeable = null,
+    // True when the PR is closed on GitHub without having been merged (a human/reviewer
+    // rejected or abandoned it). Distinct from Merged — a merged PR is also "closed" in
+    // GitHub's model, so this is defined as closed-AND-not-merged.
+    bool Closed = false);
 
 internal sealed record RestPullRequestFile(
     string FileName,
@@ -289,7 +293,10 @@ internal sealed class OctokitRestTransport : IRestTransport
     public async Task<RestPullRequest> GetPullRequestAsync(string owner, string repo, int number, CancellationToken ct)
     {
         var pr = await GetClient().PullRequest.Get(owner, repo, number).ConfigureAwait(false);
-        return new RestPullRequest(pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged, pr.Mergeable);
+        return new RestPullRequest(
+            pr.Number, pr.Head.Sha, pr.HtmlUrl, pr.Merged, pr.Mergeable,
+            // A merged PR is also "closed" in GitHub's model, so qualify with !Merged.
+            Closed: pr.State.Value == ItemState.Closed && !pr.Merged);
     }
 
     public async Task<string> GetPullRequestBodyAsync(string owner, string repo, int number, CancellationToken ct)

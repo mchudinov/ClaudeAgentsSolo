@@ -84,13 +84,17 @@ public sealed record PullRequest(
 /// <param name="HeadSha">HEAD commit SHA of the head branch at the time this was fetched.</param>
 /// <param name="Mergeable">GitHub's mergeability flag: <c>true</c> mergeable, <c>false</c> conflicting,
 /// <c>null</c> while GitHub is still computing it (treat null as "not yet known").</param>
+/// <param name="Closed">True when the PR is closed without having been merged (rejected/abandoned).
+/// Defined as closed-AND-not-merged, so it is never <c>true</c> for a merged PR. Consumers that poll
+/// for review use this to stop waiting on a PR that will never receive a terminal review.</param>
 public sealed record PullRequestStatus(
     int Number,
     PullRequestReviewState Review,
     bool ChecksGreen,
     bool Merged,
     string HeadSha,
-    bool? Mergeable);
+    bool? Mergeable,
+    bool Closed = false);
 
 /// <summary>An open pull request as surfaced for review scheduling.</summary>
 /// <param name="Number">PR number in the repository.</param>

@@ -54,9 +54,9 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
         var status = await _github.GetPullRequestStatusAsync(input.PullRequestNumber, ct);
 
         _logger.LogInformation(
-            "[{Activity}] item={ItemId} pr={PrNumber} review={Review} merged={Merged} checksGreen={ChecksGreen}",
+            "[{Activity}] item={ItemId} pr={PrNumber} review={Review} merged={Merged} checksGreen={ChecksGreen} closed={Closed}",
             nameof(WaitForReviewActivity), input.ProjectItemId,
-            input.PullRequestNumber, status.Review, status.Merged, status.ChecksGreen);
+            input.PullRequestNumber, status.Review, status.Merged, status.ChecksGreen, status.Closed);
 
         string? feedbackMarkdown = null;
         if (status.Review == PullRequestReviewState.ChangesRequested)
@@ -95,6 +95,7 @@ public sealed class WaitForReviewActivity : WorkflowActivity<WaitForReviewActivi
             ChecksGreen: status.ChecksGreen,
             FeedbackMarkdown: string.IsNullOrEmpty(feedbackMarkdown) ? null : feedbackMarkdown,
             PolledAtUtc: polledAt,
-            Mergeable: status.Mergeable);
+            Mergeable: status.Mergeable,
+            Closed: status.Closed);
     }
 }

@@ -365,6 +365,28 @@ public sealed class GitHubProjectsClientTests
     }
 
     [Fact]
+    public async Task GetPullRequestStatusAsync_surfaces_Closed_for_a_closed_unmerged_PR()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        // Transport reports the PR is closed and not merged (a human/reviewer rejected it).
+        rest.GetPullRequestAsync(Arg.Any<string>(), Arg.Any<string>(), 11, Arg.Any<CancellationToken>())
+            .Returns(new RestPullRequest(11, "sha-c", "https://...", Merged: false, Mergeable: null, Closed: true));
+        rest.GetPullRequestReviewsAsync(Arg.Any<string>(), Arg.Any<string>(), 11, Arg.Any<CancellationToken>())
+            .Returns(new List<RestPullRequestReview>());
+        rest.GetCheckRunsAsync(Arg.Any<string>(), Arg.Any<string>(), "sha-c", Arg.Any<CancellationToken>())
+            .Returns(new List<RestCheckRun>());
+
+        var svc = CreateClient(graphQL, rest);
+
+        var status = await svc.GetPullRequestStatusAsync(11, CancellationToken.None);
+
+        status.Closed.Should().BeTrue();
+        status.Merged.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task GetPullRequestStatusAsync_one_check_failure_sets_ChecksGreen_false()
     {
         var graphQL = Substitute.For<IGraphQLTransport>();

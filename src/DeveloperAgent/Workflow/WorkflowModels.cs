@@ -125,6 +125,11 @@ public sealed record WaitForReviewActivityInput(
     int PullRequestNumber);
 
 /// <summary>Input for <see cref="Activities.DoneActivity"/>.</summary>
+/// <param name="ParkInBacklog">When the task failed but a PR exists, set this to park the item in
+/// Backlog (InReview → Backlog) instead of leaving it in InReview. Used when the PR was closed without
+/// merging: there is no reviewer left to act, so the item is parked for a human to re-triage rather
+/// than orphaned in In Review. Defaults to <c>false</c> (the merge-failure path leaves the item in
+/// InReview for a human).</param>
 public sealed record DoneActivityInput(
     string ProjectItemId,
     string ContentNodeId,
@@ -133,7 +138,8 @@ public sealed record DoneActivityInput(
     string DefaultBranch,
     int? PullRequestNumber,
     bool Success,
-    long ToolCallsUsed);
+    long ToolCallsUsed,
+    bool ParkInBacklog = false);
 
 /// <summary>Input for <see cref="Activities.MergePullRequestActivity"/>.</summary>
 public sealed record MergePullRequestActivityInput(
@@ -167,13 +173,17 @@ public sealed record CreatePullRequestResult(int PullRequestNumber);
 
 /// <summary>Result of <see cref="Activities.WaitForReviewActivity"/>.</summary>
 /// <param name="Mergeable">GitHub mergeability: true mergeable, false conflicting, null still computing.</param>
+/// <param name="Closed">True when the PR was closed without merging (rejected/abandoned). The review
+/// loop treats this as terminal and stops polling. Defaults to <c>false</c> so workflow instances
+/// that recorded their history before this field existed replay deterministically.</param>
 public sealed record WaitForReviewResult(
     PullRequestReviewState ReviewState,
     bool Merged,
     bool ChecksGreen,
     string? FeedbackMarkdown,
     DateTimeOffset PolledAtUtc,
-    bool? Mergeable);
+    bool? Mergeable,
+    bool Closed = false);
 
 /// <summary>Result of <see cref="Activities.MergePullRequestActivity"/>.</summary>
 /// <param name="Outcome">Merged/AlreadyMerged → success; NotMergeable → the workflow's failure path.</param>

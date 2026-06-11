@@ -131,6 +131,29 @@ public sealed class WaitForReviewActivityTests
         result!.PolledAtUtc.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
     }
 
+    [Fact]
+    public async Task RunAsync_surfaces_Closed_when_PR_is_closed_without_merging()
+    {
+        var github = Substitute.For<IGitHubProjectService>();
+        var workflowClient = Substitute.For<IDaprWorkflowClient>();
+        github.GetPullRequestStatusAsync(99, Arg.Any<CancellationToken>())
+            .Returns(new PullRequestStatus(99, PullRequestReviewState.Pending, ChecksGreen: true,
+                Merged: false, "abc", Mergeable: null, Closed: true));
+        github.GetReviewFeedbackSinceAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(string.Empty);
+
+        var activity = new WaitForReviewActivity(
+            NullLogger<WaitForReviewActivity>.Instance,
+            github,
+            workflowClient);
+
+        var result = await activity.RunAsync(MakeContext(), MakeInput(99));
+
+        result!.Closed.Should().BeTrue();
+        // A closed-unmerged PR is terminal for the workflow's own branch — the activity raises no event.
+        await workflowClient.DidNotReceiveWithAnyArgs().RaiseEventAsync(default!, default!, default!, default);
+    }
+
     // ── External event raising (Step-15 P2-D part 3/3) ────────────────────────
 
     [Fact]

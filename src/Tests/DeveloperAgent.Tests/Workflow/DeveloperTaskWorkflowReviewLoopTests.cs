@@ -151,6 +151,41 @@ public sealed class DeveloperTaskWorkflowReviewLoopTests
         doneInput.PullRequestNumber.Should().Be(7); // non-null PR ⇒ DoneActivity leaves the item In-review
     }
 
+    // ── PR closed without merging → terminate (no infinite poll loop) ────────
+
+    [Fact]
+    public async Task Workflow_terminates_PrClosed_when_PR_is_closed_without_merging()
+    {
+        var ctx = new FakeWorkflowContext();
+        SetupHappyPathUntilReviewLoop(ctx);
+        // First poll reports the PR was closed (rejected) without merging — Closed=true while the
+        // review is still "Pending" and there is no reviewer left to act. The fix must stop here.
+        // The second result only matters for the pre-fix RED: without the terminal branch the loop
+        // re-polls and merges, proving it kept polling a dead PR forever (the production bug).
+        ctx.SetReviewPollResults(
+            new WaitForReviewResult(PullRequestReviewState.Pending, Merged: false, ChecksGreen: true,
+                FeedbackMarkdown: null, PolledAtUtc: DateTimeOffset.UtcNow, Mergeable: null, Closed: true),
+            new WaitForReviewResult(PullRequestReviewState.Approved, Merged: false, ChecksGreen: true,
+                FeedbackMarkdown: null, PolledAtUtc: DateTimeOffset.UtcNow, Mergeable: true, Closed: false));
+        ctx.AutoCompleteTimers = true;
+
+        var workflow = new DeveloperTaskWorkflow();
+        var result = await workflow.RunAsync(ctx, Input());
+
+        result.Outcome.Should().Be("PrClosed");
+        // Stopped after the very first poll: no re-poll, no modify, no merge of a dead PR.
+        ctx.ActivityCalls.Count(c => c.Name == nameof(WaitForReviewActivity)).Should().Be(1);
+        ctx.ActivityCalls.Should().NotContain(c => c.Name == nameof(ModifyCodeActivity));
+        ctx.ActivityCalls.Should().NotContain(c => c.Name == nameof(MergePullRequestActivity));
+        // Clean terminal: DoneActivity parks the item in Backlog (Success=false + non-null PR +
+        // ParkInBacklog), session deleted.
+        var doneInput = (DoneActivityInput)ctx.ActivityCalls.Last(c => c.Name == nameof(DoneActivity)).Input!;
+        doneInput.Success.Should().BeFalse();
+        doneInput.PullRequestNumber.Should().Be(7);
+        doneInput.ParkInBacklog.Should().BeTrue();
+        ctx.ActivityCalls.Should().Contain(c => c.Name == nameof(DeleteAgentSessionActivity));
+    }
+
     // ── ChangesRequested external event → modify ─────────────────────────────
 
     [Fact]

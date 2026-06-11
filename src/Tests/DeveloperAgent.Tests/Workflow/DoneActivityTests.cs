@@ -102,6 +102,41 @@ public sealed class DoneActivityTests
     }
 
     [Fact]
+    public async Task Failure_path_with_PR_and_ParkInBacklog_moves_item_InReview_to_Backlog()
+    {
+        var github = Substitute.For<IGitHubProjectService>();
+        var activity = BuildActivity(github);
+
+        // The PR was closed without merging: there is no reviewer left to act, so the item is
+        // parked in Backlog (InReview → Backlog) for a human to re-triage rather than orphaned in
+        // In Review. This is distinct from the plain merge-failure path, which leaves it in InReview.
+        var input = new DoneActivityInput(
+            ProjectItemId: "PVTI_abc",
+            ContentNodeId: "I_node",
+            WorkspacePath: string.Empty,
+            BranchName: "agent/branch",
+            DefaultBranch: "main",
+            PullRequestNumber: 99,
+            Success: false,
+            ToolCallsUsed: 5,
+            ParkInBacklog: true);
+
+        await activity.RunAsync(MakeContext(), input);
+
+        await github.Received(1).MoveItemAsync(
+            "PVTI_abc",
+            ProjectState.InReview,
+            ProjectState.Backlog,
+            Arg.Any<CancellationToken>());
+
+        // It must NOT move it to Done or release it back to Ready.
+        await github.DidNotReceive().MoveItemAsync(
+            Arg.Any<string>(), Arg.Any<ProjectState>(), Arg.Is(ProjectState.Done), Arg.Any<CancellationToken>());
+        await github.DidNotReceive().MoveItemAsync(
+            Arg.Any<string>(), Arg.Any<ProjectState>(), Arg.Is(ProjectState.Ready), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Failure_path_with_PR_does_not_move_item()
     {
         var github = Substitute.For<IGitHubProjectService>();

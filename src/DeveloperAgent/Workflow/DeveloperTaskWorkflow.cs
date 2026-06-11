@@ -187,6 +187,23 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
                 nameof(WaitForReviewActivity), waitInput, retryOptions);
             await SaveSessionAsync(context, input.ProjectItemId, nameof(WaitForReviewActivity), session.Summary, retryOptions);
 
+            // The PR was closed without merging (a human/reviewer rejected or abandoned it). No
+            // terminal review will ever arrive, so there is nothing left to wait for — stop polling.
+            // Without this branch the loop treats a closed PR as "Pending" forever (closed reads as
+            // Merged=false, Review=Pending), parking the workflow as a permanently-Active instance
+            // that blocks the dispatcher from ever re-grabbing the board item. We terminate cleanly:
+            // release the workspace and leave the board column wherever the human placed it.
+            //
+            // Checked FIRST so it is unconditionally terminal: Closed is defined as closed-AND-not-
+            // merged, so a merged PR has Closed=false and the merge-success path below is undisturbed,
+            // while a closed PR never reaches the merge branches (which would otherwise attempt a
+            // doomed merge if GitHub ever reported a closed PR as approved+mergeable).
+            if (lastReviewResult.Closed)
+            {
+                return await CompleteWithPrClosedAsync(context, input, branchResult,
+                    acquireResult.BranchName, prNumber, toolCallsUsed, session.Summary, retryOptions);
+            }
+
             // Direct decision when the poll itself observed a terminal state.
             if (lastReviewResult.ReviewState == PullRequestReviewState.Approved
                 && lastReviewResult.ChecksGreen
@@ -319,6 +336,34 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
         await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
         await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
         return new TaskResult("MergeFailed");
+    }
+
+    /// <summary>
+    /// The PR was closed on GitHub without being merged (rejected/abandoned by a human or the
+    /// reviewer). <see cref="Activities.DoneActivity"/> parks the item in Backlog (InReview → Backlog
+    /// via <see cref="DoneActivityInput.ParkInBacklog"/>) so it is re-triaged by a human rather than
+    /// re-grabbed or orphaned in In Review — releases the workspace, deletes the session, and ends
+    /// with a distinct <c>"PrClosed"</c> outcome for observability.
+    /// </summary>
+    private static async Task<TaskResult> CompleteWithPrClosedAsync(
+        WorkflowContext context, TaskInput input, CreateBranchResult branchResult,
+        string branchName, int prNumber, long toolCallsUsed, string? summary, WorkflowTaskOptions retryOptions)
+    {
+        var doneInput = new DoneActivityInput(
+            ProjectItemId: input.ProjectItemId,
+            ContentNodeId: input.ContentNodeId,
+            WorkspacePath: branchResult.WorkspacePath,
+            BranchName: branchName,
+            DefaultBranch: branchResult.DefaultBranch,
+            PullRequestNumber: prNumber,
+            Success: false,
+            ToolCallsUsed: toolCallsUsed,
+            ParkInBacklog: true);
+
+        await context.CallActivityAsync<object?>(nameof(DoneActivity), doneInput, retryOptions);
+        await SaveSessionAsync(context, input.ProjectItemId, nameof(DoneActivity), summary, retryOptions);
+        await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
+        return new TaskResult("PrClosed");
     }
 
     private static async Task<TaskResult> CompleteWithSuccessAsync(
