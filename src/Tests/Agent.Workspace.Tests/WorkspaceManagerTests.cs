@@ -49,6 +49,24 @@ public sealed class WorkspaceManagerTests : IDisposable
         return new WorkspaceManager(_git, workspaceOpts, logger);
     }
 
+    /// <summary>
+    /// Mimics what a real <c>git clone</c> leaves behind: git writes loose objects (and pack
+    /// files) read-only — mode 0444 — nested several levels deep under <c>.git/objects</c>.
+    /// On Windows, <see cref="Directory.Delete(string, bool)"/> throws
+    /// <see cref="UnauthorizedAccessException"/> on such files unless the read-only bit is cleared
+    /// first. The nesting (repo/.git/objects/ae/&lt;sha&gt;) ensures the wipe must recurse into the
+    /// tree to reach it. Returns the read-only file's path.
+    /// </summary>
+    private static string PlantReadOnlyGitObject(string workspaceDir)
+    {
+        var objectsDir = Path.Combine(workspaceDir, "repo", ".git", "objects", "ae");
+        Directory.CreateDirectory(objectsDir);
+        var objectFile = Path.Combine(objectsDir, "c53daa4931156892e49e86c120419d5f8839");
+        File.WriteAllText(objectFile, "fake loose object");
+        File.SetAttributes(objectFile, FileAttributes.ReadOnly);
+        return objectFile;
+    }
+
     // ── Directory structure ──────────────────────────────────────────────────
 
     [Fact]
@@ -82,6 +100,25 @@ public sealed class WorkspaceManagerTests : IDisposable
 
         // The stale file should be gone
         File.Exists(existingFile).Should().BeFalse("workspace should have been wiped");
+    }
+
+    [Fact]
+    public async Task PrepareAsync_wipes_existing_dir_with_read_only_git_objects()
+    {
+        var manager = BuildManager();
+        const string itemId = "item-readonly-wipe";
+
+        // A crashed/aborted prior run left a real git checkout behind, whose .git/objects holds
+        // read-only loose objects. This is the production crash:
+        //   UnauthorizedAccessException: Access to the path '...c53daa...' is denied.
+        var workspaceDir = Path.Combine(_rootPath, itemId);
+        Directory.CreateDirectory(workspaceDir);
+        var objectFile = PlantReadOnlyGitObject(workspaceDir);
+
+        var act = async () => await manager.PrepareAsync(itemId, "agent/test", DefaultRepoUrl, CancellationToken.None);
+
+        await act.Should().NotThrowAsync("the wipe must clear read-only git objects before deleting");
+        File.Exists(objectFile).Should().BeFalse("the stale read-only workspace should have been wiped");
     }
 
     // ── Git client delegation ────────────────────────────────────────────────
@@ -146,6 +183,25 @@ public sealed class WorkspaceManagerTests : IDisposable
         await manager.ReleaseAsync(ws, CancellationToken.None);
 
         Directory.Exists(dir).Should().BeFalse("workspace should be deleted after release");
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_deletes_workspace_with_read_only_git_objects()
+    {
+        var manager = BuildManager();
+        const string itemId = "item-readonly-release";
+
+        var ws = await manager.PrepareAsync(itemId, "agent/test", DefaultRepoUrl, CancellationToken.None);
+
+        // CloneAsync is stubbed, so the real clone never ran — plant the read-only loose object it
+        // would have written, so Release must clear read-only attributes before deleting.
+        var workspaceDir = Path.Combine(_rootPath, itemId);
+        PlantReadOnlyGitObject(workspaceDir);
+
+        var act = async () => await manager.ReleaseAsync(ws, CancellationToken.None);
+
+        await act.Should().NotThrowAsync("release must clear read-only git objects before deleting");
+        Directory.Exists(workspaceDir).Should().BeFalse("workspace should be deleted after release");
     }
 
     [Fact]

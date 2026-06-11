@@ -66,7 +66,7 @@ public sealed class AnthropicTriageService : ITriageService
             MaxOutputTokens = MaxTokens,
             // Triage is a cheap classification — run it at low reasoning effort. The Anthropic
             // request seam lands this as output_config.effort (see AnthropicRequestOptions).
-            RawRepresentationFactory = AnthropicRequestOptions.EffortFactory("low"),
+            RawRepresentationFactory = AnthropicRequestOptions.EffortFactory("low", _agent.Model),
         };
 
         string? text;

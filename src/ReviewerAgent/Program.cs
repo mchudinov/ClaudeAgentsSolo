@@ -30,10 +30,7 @@ public partial class Program
 
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Configuration
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-                .AddEnvironmentVariables();
+            ConfigureConfigSources(builder.Configuration, builder.Environment);
 
             var logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
@@ -174,6 +171,24 @@ public partial class Program
         {
             Serilog.Log.CloseAndFlush();
         }
+    }
+
+    /// <summary>
+    /// Registers the host's configuration sources. Exposed so tests can assert the source wiring
+    /// without starting the host (the polling loop reviews live PRs on startup).
+    /// </summary>
+    public static void ConfigureConfigSources(IConfigurationBuilder configuration, IHostEnvironment environment)
+    {
+        configuration
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddJsonFile($"appsettings.{environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+            // WebApplication.CreateBuilder registers the User Secrets provider only in Development.
+            // Add it explicitly so the shared User Secrets store (anthropic-api-key / github-token)
+            // resolves in every environment — when launched without ASPNETCORE_ENVIRONMENT=Development
+            // or under the Aspire AppHost. No-ops in containers where the store dir is absent, leaving
+            // the resolver's environment-variable tier to take over.
+            .AddUserSecrets(typeof(Program).Assembly, optional: true, reloadOnChange: true)
+            .AddEnvironmentVariables();
     }
 }
 

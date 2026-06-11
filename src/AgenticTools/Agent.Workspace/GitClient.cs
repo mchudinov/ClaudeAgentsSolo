@@ -60,16 +60,29 @@ public sealed class GitClient : IGitClient
     /// <inheritdoc />
     public async Task<string> ResolveDefaultBranchAsync(TaskWorkspace ws, CancellationToken ct)
     {
-        // git symbolic-ref --short refs/remotes/origin/HEAD → e.g. "origin/main"
-        var result = await _sandbox.RunAsync(
+        // Preferred: the remote's advertised default, recorded by `git clone` as origin/HEAD.
+        // git symbolic-ref --short refs/remotes/origin/HEAD → e.g. "origin/main".
+        var originHead = await _sandbox.RunAsync(
             "git symbolic-ref --short refs/remotes/origin/HEAD",
             ws.RepoRoot, DefaultTimeout, ct).ConfigureAwait(false);
-        EnsureSuccess(result, "git symbolic-ref --short refs/remotes/origin/HEAD");
 
-        // Output is "origin/main" — strip the remote prefix
-        var output = result.Stdout.Trim();
-        var slashIdx = output.IndexOf('/');
-        return slashIdx >= 0 ? output[(slashIdx + 1)..] : output;
+        if (!originHead.TimedOut && originHead.ExitCode == 0)
+        {
+            // Output is "origin/main" — strip the remote prefix.
+            var output = originHead.Stdout.Trim();
+            var slashIdx = output.IndexOf('/');
+            return slashIdx >= 0 ? output[(slashIdx + 1)..] : output;
+        }
+
+        // Fallback: a clone does not always record refs/remotes/origin/HEAD (the command above
+        // then dies with "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref", exit 128).
+        // This method is only called immediately after CloneAsync and before any branch checkout,
+        // so HEAD is still attached to the remote's default branch — its short name is the default.
+        var head = await _sandbox.RunAsync(
+            "git symbolic-ref --short HEAD",
+            ws.RepoRoot, DefaultTimeout, ct).ConfigureAwait(false);
+        EnsureSuccess(head, "git symbolic-ref --short HEAD (origin/HEAD fallback)");
+        return head.Stdout.Trim();
     }
 
     /// <inheritdoc />

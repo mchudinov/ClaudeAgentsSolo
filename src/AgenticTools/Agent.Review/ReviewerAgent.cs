@@ -111,7 +111,7 @@ public sealed class ReviewerAgent : IReviewerAgent
                 AllowMultipleToolCalls = false,
                 // Apply the configured reasoning effort (output_config.effort) via the Anthropic
                 // request seam. Null when Effort is blank, leaving the provider default in place.
-                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_reviewerOptions.Effort),
+                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_reviewerOptions.Effort, _reviewerOptions.Model),
             },
         };
 

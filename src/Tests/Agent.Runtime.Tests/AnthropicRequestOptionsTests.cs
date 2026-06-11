@@ -19,8 +19,25 @@ public sealed class AnthropicRequestOptionsTests
     [InlineData("   ")]
     public void Blank_effort_yields_no_factory(string? effort)
     {
-        AnthropicRequestOptions.EffortFactory(effort).Should().BeNull(
+        AnthropicRequestOptions.EffortFactory(effort, "claude-opus-4-8").Should().BeNull(
             because: "a blank effort must leave the request untouched (provider default)");
+    }
+
+    [Fact]
+    public void Carries_the_model_on_the_request_seed()
+    {
+        // Regression for AnthropicBadRequestException "model: String should have at least 1
+        // character". The Anthropic AsIChatClient adapter does NOT backfill MessageCreateParams.Model
+        // from the chat client's default model when a RawRepresentationFactory seeds the request, so
+        // EffortFactory must place the real model on the seed itself — a blank model here reaches the
+        // API verbatim and is rejected, crashing the whole run.
+        var factory = AnthropicRequestOptions.EffortFactory("xhigh", "claude-opus-4-8");
+        var prams = factory!(null!).Should().BeOfType<MessageCreateParams>().Subject;
+
+        // Model is ApiEnum<string, Model>; the implicit ApiEnum→string conversion returns the raw
+        // wire value (mirrors the OutputConfig.Effort assertion below).
+        string rawModel = prams.Model!;
+        rawModel.Should().Be("claude-opus-4-8");
     }
 
     [Theory]
@@ -33,11 +50,13 @@ public sealed class AnthropicRequestOptionsTests
     [InlineData(" high ", "high")]   // trimmed
     public void Maps_effort_onto_output_config(string configured, string expected)
     {
-        var factory = AnthropicRequestOptions.EffortFactory(configured);
+        var factory = AnthropicRequestOptions.EffortFactory(configured, "claude-opus-4-8");
         factory.Should().NotBeNull();
 
         var seed = factory!(null!);
         var prams = seed.Should().BeOfType<MessageCreateParams>().Subject;
+        string rawModel = prams.Model!;
+        rawModel.Should().Be("claude-opus-4-8", because: "the seed must carry the real model");
         prams.OutputConfig.Should().NotBeNull();
         // OutputConfig.Effort is ApiEnum<string, Effort>; the implicit ApiEnum→string conversion
         // returns the raw wire value ("xhigh" etc.) regardless of whether it is a named member.

@@ -253,8 +253,13 @@ public sealed class WorkspaceOptionsTests
         // by the command deny policy, which runs BEFORE the allowlist (deny wins).
         // "cd" is intentionally absent: there is no real shell, so a "cd" segment would
         // run as a direct exec and cannot change the agent's working directory.
+        // The read-only inspection commands cat / echo / grep / head / tail / wc are also
+        // allowed so the agent can run common diagnostics; a benign un-listed command is a
+        // recoverable miss (returned to the model), not a fatal run-ender. "find" is
+        // deliberately EXCLUDED — bare find permits -exec/-delete, which would run arbitrary
+        // subcommands outside the sandbox's per-command validation.
         // Step-41: sourced from the bound appsettings.json (the single source) — the record
-        // default is empty. The shipped list adds the read-only "cat" to the families below.
+        // default is empty.
         ProductionSandboxConfig.AllowedCommands.Should().BeEquivalentTo(new[]
         {
             "dotnet",
@@ -264,6 +269,11 @@ public sealed class WorkspaceOptionsTests
             "dir",
             "pwd",
             "cat",
+            "echo",
+            "grep",
+            "head",
+            "tail",
+            "wc",
         }, o => o.WithStrictOrdering());
     }
 }

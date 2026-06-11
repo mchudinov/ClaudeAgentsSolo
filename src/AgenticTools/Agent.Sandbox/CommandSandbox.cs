@@ -76,8 +76,22 @@ public sealed class CommandSandbox : ICommandSandbox
         // The deny policy runs BEFORE the allowlist (deny wins) for each segment.
         // Because validation is a separate pass, a compound line is rejected in full
         // if ANY segment is disallowed/denied — "git status && rm -rf /" never runs
-        // its allowed prefix.
+        // its allowed prefix. Either way the command never executes, so the security
+        // boundary is identical; the rejection CLASS only controls what happens after.
+        //
+        // Two REJECTION classes are RECOVERABLE — neither ends the run; both are handed
+        // back to the model by ShellRunTool so it can adapt:
+        //   • A deny-rule hit (curl, blind force-push, secret manipulation, …) throws
+        //     CommandDeniedException, carrying the deny reason.
+        //   • A plain allowlist MISS throws CommandNotAllowedException, carrying the allowlist.
+        // Only a workspace escape (cwd outside the root, handled in ValidateCwd) or an
+        // empty/malformed segment is FATAL — a SandboxViolationException the host runner turns
+        // into a run-terminating SandboxViolation outcome.
+        // Deny wins GLOBALLY: every segment's deny policy is evaluated (throwing immediately)
+        // before any recoverable miss is surfaced, so a denied segment anywhere surfaces the
+        // more-actionable deny message even when an earlier segment is merely off the allowlist.
         var validated = new List<(string Connector, IReadOnlyList<string> Argv)>(segments.Count);
+        CommandNotAllowedException? deferredMiss = null;
         foreach (var segment in segments)
         {
             // Tokenise, then strip leading -c <kv> pairs (git auth header pattern).
@@ -90,18 +104,24 @@ public sealed class CommandSandbox : ICommandSandbox
 
             var denyResult = _commandDenyPolicy.Check(strippedArgv);
             if (denyResult.IsDenied)
-                throw new SandboxViolationException(
+                throw new CommandDeniedException(
                     denyResult.Reason ?? $"command is denied by sandbox policy: rule '{denyResult.RuleName}'");
 
-            var matchedEntry = FindAllowlistEntry(strippedArgv, opts.AllowedCommands);
-            if (matchedEntry is null)
-                throw new SandboxViolationException(
-                    $"Command '{segment.Text}' does not match any entry in AllowedCommands.");
+            // Remember the FIRST allowlist miss but keep scanning the remaining segments for a
+            // deny that would override it (deny wins globally). Surfaced after the loop.
+            if (deferredMiss is null && FindAllowlistEntry(strippedArgv, opts.AllowedCommands) is null)
+                deferredMiss = new CommandNotAllowedException(
+                    $"Command '{segment.Text}' is not in the workspace allowlist. " +
+                    $"Allowed commands: {string.Join(", ", opts.AllowedCommands)}. " +
+                    "Re-run using only an allowed command.");
 
             // Execution uses the ORIGINAL argv (with the -c auth pair intact); only
             // the allowlist/deny checks see the stripped form.
             validated.Add((segment.Connector, argv));
         }
+
+        if (deferredMiss is not null)
+            throw deferredMiss;
 
         // ── 4. Execute segments sequentially honouring connector semantics ───
         // The first segment always runs; "&&" runs only after success, "||" only

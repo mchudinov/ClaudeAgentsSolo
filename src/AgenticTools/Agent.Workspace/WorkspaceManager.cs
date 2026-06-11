@@ -39,7 +39,7 @@ public sealed class WorkspaceManager : IWorkspaceManager
         if (Directory.Exists(dir))
         {
             _logger.LogInformation("Wiping pre-existing workspace at {Dir}", dir);
-            Directory.Delete(dir, recursive: true);
+            ForceDeleteDirectory(dir);
         }
 
         // ── 2. Create directory structure ────────────────────────────────────
@@ -72,8 +72,28 @@ public sealed class WorkspaceManager : IWorkspaceManager
         if (Directory.Exists(dir))
         {
             _logger.LogInformation("Releasing workspace at {Dir}", dir);
-            Directory.Delete(dir, recursive: true);
+            ForceDeleteDirectory(dir);
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Recursively deletes <paramref name="dir"/>, first clearing the read-only attribute on every
+    /// file. A workspace contains a real git checkout, and git writes loose objects and pack files
+    /// under <c>.git/objects</c> as read-only (mode 0444); on Windows
+    /// <see cref="Directory.Delete(string, bool)"/> throws
+    /// <see cref="UnauthorizedAccessException"/> ("Access to the path … is denied") when it hits one.
+    /// Clearing the flag first lets the recursive delete remove the whole tree.
+    /// </summary>
+    private static void ForceDeleteDirectory(string dir)
+    {
+        foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            var attributes = File.GetAttributes(file);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+        }
+
+        Directory.Delete(dir, recursive: true);
     }
 }

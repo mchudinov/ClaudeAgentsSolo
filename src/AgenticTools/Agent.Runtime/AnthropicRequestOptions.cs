@@ -19,7 +19,7 @@ public static class AnthropicRequestOptions
     /// trimmed and lower-cased and passed through verbatim (<c>low | medium | high | xhigh | max</c>);
     /// <c>Effort</c> is an extensible API enum, so forward-compatible values are accepted as-is.
     /// </summary>
-    public static Func<IChatClient, object?>? EffortFactory(string? effort)
+    public static Func<IChatClient, object?>? EffortFactory(string? effort, string model)
     {
         if (string.IsNullOrWhiteSpace(effort))
             return null;
@@ -27,11 +27,14 @@ public static class AnthropicRequestOptions
         var level = effort.Trim().ToLowerInvariant();
         return _ => new MessageCreateParams
         {
-            // Model / Messages / MaxTokens are required members of MessageCreateParams, but the
-            // Anthropic AsIChatClient adapter overwrites them from the ChatOptions (the model id it
-            // was created with, the converted chat messages, and MaxOutputTokens) before sending.
-            // They are inert placeholders here — only OutputConfig is carried through.
-            Model = string.Empty,
+            // Model MUST be the real model id: when a RawRepresentationFactory supplies the request
+            // seed, the Anthropic AsIChatClient adapter does NOT backfill Model from the chat client's
+            // default model — an empty Model here reaches the API verbatim and is rejected with
+            // "model: String should have at least 1 character", crashing the run.
+            Model = model,
+            // Messages / MaxTokens ARE overwritten by the adapter from the converted chat messages and
+            // ChatOptions.MaxOutputTokens, so they are inert placeholders. Only Model and OutputConfig
+            // are carried through to the wire.
             Messages = [],
             MaxTokens = 32_000,
             OutputConfig = new OutputConfig { Effort = level },

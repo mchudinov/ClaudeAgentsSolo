@@ -214,6 +214,27 @@ public sealed class GitClientTests : IClassFixture<TempRepoFixture>
         defaultBranch.Should().Be("main");
     }
 
+    [Fact]
+    public async Task ResolveDefaultBranchAsync_falls_back_to_HEAD_when_origin_HEAD_is_unset()
+    {
+        // Reproduces the production failure cloning github.com/mchudinov/TicTacToe3: the clone
+        // succeeds but refs/remotes/origin/HEAD is never recorded as a symbolic ref, so
+        // "git symbolic-ref --short refs/remotes/origin/HEAD" dies with
+        // "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref" (exit 128).
+        // CreateFreshClone sets origin/HEAD explicitly, so delete it to mimic that state.
+        // This method is only ever called immediately after clone (before any feature-branch
+        // checkout), so HEAD is still on the remote default branch and resolution must yield
+        // "main" via the HEAD fallback instead of throwing.
+        var (_, repoRoot, ws) = CreateFreshClone();
+        RunGit(repoRoot, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD");
+
+        var client = BuildClient(_fixture.TempDir);
+
+        var defaultBranch = await client.ResolveDefaultBranchAsync(ws, CancellationToken.None);
+
+        defaultBranch.Should().Be("main");
+    }
+
     // ── PushAsync — default-branch guard ─────────────────────────────────────
 
     [Fact]

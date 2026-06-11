@@ -169,6 +169,48 @@ public sealed class CommandSandboxTests
             Arg.Any<CancellationToken>());
     }
 
+    // ── Production config: newly-permitted inspection commands ────────────────
+    // These bare commands were added to Workspace.AllowedCommands so the agent can run
+    // common harmless diagnostics without a benign `echo`/`grep` killing the whole run.
+    [Theory]
+    [InlineData("echo ---SECTION---")]
+    [InlineData("grep -rn TODO src")]
+    [InlineData("head -n 20 README.md")]
+    [InlineData("tail -n 20 build.log")]
+    [InlineData("wc -l Program.cs")]
+    public async Task Production_allowlist_permits_added_inspection_commands(string commandLine)
+    {
+        // Uses the REAL shipped Workspace.AllowedCommands + Sandbox.DeniedCommands.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner); // allowedCommands defaults to ProductionSandboxConfig
+
+        await sandbox.RunAsync(
+            commandLine, ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Production_allowlist_still_excludes_find()
+    {
+        // `find` is deliberately NOT allowed: bare `find` permits -exec/-delete, which would
+        // run arbitrary subcommands outside the sandbox's per-command validation. The miss is
+        // recoverable (the model is told), so this is CommandNotAllowedException, not fatal.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner);
+
+        var act = async () => await sandbox.RunAsync(
+            "find . -name *.cs",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<CommandNotAllowedException>();
+    }
+
     [Theory]
     [InlineData("gh repo delete owner/repo --yes")]
     [InlineData("gh auth token")]
@@ -179,15 +221,17 @@ public sealed class CommandSandboxTests
     public async Task Deny_policy_overrides_a_broadly_allowed_family(string commandLine)
     {
         // Even though "gh", "dotnet" and "git" families are allowed, the deny policy
-        // (consulted before the allowlist) blocks these dangerous verbs and the
-        // runner is never invoked.
+        // (consulted before the allowlist) blocks these dangerous verbs and the runner is
+        // never invoked. A deny-rule hit is recoverable (the command never ran), so it surfaces
+        // as CommandDeniedException — returned to the model — NOT the run-terminating
+        // SandboxViolationException reserved for workspace escapes.
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["dotnet", "git", "gh", "ls", "dir", "pwd"]);
 
         var act = async () => await sandbox.RunAsync(
             commandLine, ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        await act.Should().ThrowAsync<CommandDeniedException>();
         await runner.DidNotReceive().RunAsync(
             Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
@@ -199,7 +243,7 @@ public sealed class CommandSandboxTests
     // ── Allowlist miss ───────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Allowlist_miss_whole_token_throws_SandboxViolationException()
+    public async Task Allowlist_miss_whole_token_throws_CommandNotAllowedException()
     {
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["git push"]);
@@ -208,12 +252,34 @@ public sealed class CommandSandboxTests
             "git pushplus origin main",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        // An allowlist MISS is recoverable (the command never ran), so it surfaces as the
+        // non-fatal CommandNotAllowedException — NOT the run-terminating SandboxViolationException
+        // reserved for deny-rule hits and workspace escapes.
+        await act.Should().ThrowAsync<CommandNotAllowedException>();
     }
 
     [Fact]
-    public async Task Allowlist_miss_unrecognised_command_throws_SandboxViolationException()
+    public async Task Allowlist_miss_message_lists_the_allowed_commands()
     {
+        // The message is handed back to the model so it can retry with an allowed command;
+        // it must therefore enumerate the allowlist.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["dotnet build", "git status"]);
+
+        var act = async () => await sandbox.RunAsync(
+            "echo hi",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<CommandNotAllowedException>())
+            .Which.Message.Should().Contain("dotnet build").And.Contain("git status");
+    }
+
+    [Fact]
+    public async Task Deny_rule_hit_curl_throws_CommandDeniedException()
+    {
+        // curl matches the no-curl DENY rule (checked before the allowlist). A deny hit is
+        // recoverable — the command never ran — so it surfaces as CommandDeniedException, which
+        // ShellRunTool returns to the model, rather than the fatal SandboxViolationException.
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["dotnet build"]);
 
@@ -221,7 +287,7 @@ public sealed class CommandSandboxTests
             "curl https://evil.com",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        await act.Should().ThrowAsync<CommandDeniedException>();
     }
 
     [Fact]
@@ -236,7 +302,9 @@ public sealed class CommandSandboxTests
                 "rm -rf /",
                 ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
         }
-        catch (SandboxViolationException) { /* expected */ }
+        // rm is neither allowed nor on a deny rule → recoverable allowlist miss. It still never
+        // reaches the runner: the allowlist is validated before any execution.
+        catch (CommandNotAllowedException) { /* expected */ }
 
         await runner.DidNotReceive().RunAsync(
             Arg.Any<string>(),
@@ -246,10 +314,13 @@ public sealed class CommandSandboxTests
             Arg.Any<CancellationToken>());
     }
 
-    // ── git push --force rejection ────────────────────────────────────────────
+    // ── git push --force rejection / --force-with-lease acceptance ────────────
+    // Blind --force / -f stay DENIED (recoverable CommandDeniedException). The lease-guarded
+    // --force-with-lease is ALLOWED: it is the safe variant the persona's "amend the same branch
+    // and push" workflow requires (a non-fast-forward re-push of the agent's own branch).
 
     [Fact]
-    public async Task Git_push_force_long_flag_throws_SandboxViolationException()
+    public async Task Git_push_force_long_flag_throws_CommandDeniedException()
     {
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["git push"]);
@@ -258,12 +329,12 @@ public sealed class CommandSandboxTests
             "git push --force",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>()
+        await act.Should().ThrowAsync<CommandDeniedException>()
                  .WithMessage("*--force*");
     }
 
     [Fact]
-    public async Task Git_push_force_short_flag_throws_SandboxViolationException()
+    public async Task Git_push_force_short_flag_throws_CommandDeniedException()
     {
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["git push"]);
@@ -272,7 +343,32 @@ public sealed class CommandSandboxTests
             "git push -f origin main",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        await act.Should().ThrowAsync<CommandDeniedException>();
+    }
+
+    [Fact]
+    public async Task Git_push_force_with_lease_is_allowed_and_runs()
+    {
+        // Regression (the production crash): the persona's documented "amend the same branch and
+        // push" workflow is a non-fast-forward update that ONLY a force-push can complete. The
+        // agent correctly reached for --force-with-lease — the SAFE, lease-guarded variant that
+        // refuses to clobber if the remote moved. Denying it killed every review-round and every
+        // re-push over a stale branch left by a prior aborted run. It must be allowed and run.
+        // Uses the production deny rules by default — only the explicit no-git-force-with-lease
+        // rule was removed; blind --force / -f remain denied.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["git push"]);
+
+        await sandbox.RunAsync(
+            "git push --force-with-lease origin agent/my-branch",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await runner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
     }
 
     // ── -c key=value leading-pair stripping ──────────────────────────────────
@@ -418,7 +514,8 @@ public sealed class CommandSandboxTests
     public async Task Compound_rejects_and_runs_nothing_when_any_segment_not_allowed()
     {
         // Fail-closed: if a LATER segment is disallowed, the whole compound is
-        // rejected and NO segment runs — even the allowed first one.
+        // rejected and NO segment runs — even the allowed first one. A plain allowlist
+        // miss is recoverable, so it surfaces as CommandNotAllowedException.
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["git status"]);
 
@@ -426,7 +523,32 @@ public sealed class CommandSandboxTests
             "git status && rm -rf /",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        await act.Should().ThrowAsync<CommandNotAllowedException>();
+        await runner.DidNotReceive().RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compound_deny_in_any_segment_wins_over_an_earlier_allowlist_miss()
+    {
+        // "deny wins globally": a denied segment anywhere in the chain surfaces the deny
+        // (CommandDeniedException, carrying the specific forbidden flag), even when an EARLIER
+        // segment is only an allowlist miss (which on its own would be CommandNotAllowedException).
+        // Both are recoverable, but the deny is the more actionable message, so every segment's
+        // deny rule is evaluated before any recoverable miss is surfaced.
+        var runner = OkRunner();
+        var sandbox = BuildSandbox(runner, ["git push"]);
+
+        var act = async () => await sandbox.RunAsync(
+            "rm -rf / && git push --force",
+            ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<CommandDeniedException>()
+                 .WithMessage("*--force*");
         await runner.DidNotReceive().RunAsync(
             Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
@@ -438,7 +560,8 @@ public sealed class CommandSandboxTests
     [Fact]
     public async Task Compound_rejects_and_runs_nothing_when_any_segment_is_denied()
     {
-        // The deny policy applies per-segment; a denied later segment fails the whole chain.
+        // The deny policy applies per-segment; a denied later segment fails the whole chain
+        // (recoverable CommandDeniedException) and nothing runs.
         var runner = OkRunner();
         var sandbox = BuildSandbox(runner, ["git status", "git push"]);
 
@@ -446,7 +569,7 @@ public sealed class CommandSandboxTests
             "git status && git push --force",
             ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None);
 
-        await act.Should().ThrowAsync<SandboxViolationException>()
+        await act.Should().ThrowAsync<CommandDeniedException>()
                  .WithMessage("*--force*");
         await runner.DidNotReceive().RunAsync(
             Arg.Any<string>(),

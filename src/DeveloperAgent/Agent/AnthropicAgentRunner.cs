@@ -131,7 +131,7 @@ public sealed class AnthropicAgentRunner : IAgentRunner
                 AllowMultipleToolCalls = false,
                 // Apply the configured reasoning effort (output_config.effort) via the Anthropic
                 // request seam. Null when Effort is blank, leaving the provider default in place.
-                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_options.Effort),
+                RawRepresentationFactory = AnthropicRequestOptions.EffortFactory(_options.Effort, _options.Model),
             },
         };
 

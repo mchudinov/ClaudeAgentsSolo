@@ -335,6 +335,50 @@ public sealed class AnthropicAgentRunnerTests
         result.Outcome.Should().NotBe(AgentRunOutcome.SandboxViolation);
     }
 
+    // ── Test: a tool ERROR RESULT (not a throw) is recoverable — run continues ──
+
+    [Fact]
+    public async Task Tool_error_result_is_recoverable_and_run_continues()
+    {
+        // The recoverable mirror of SandboxViolation_from_tool_ends_run. When a tool RETURNS an
+        // error result (IsError=true) instead of THROWING — exactly what ShellRunTool now does for
+        // an allowlist MISS (CommandNotAllowedException → ToolResult) — the run must NOT end: the
+        // error is fed back to the model and the loop continues to the next turn. This guards the
+        // load-bearing, MAF-version-dependent invariant that a returned is_error result does NOT
+        // trip MaximumConsecutiveErrorsPerRequest=0 (which counts only thrown exceptions).
+        var missTool = new FakeTool
+        {
+            Name = "shell_run",
+            Description = "Run shell",
+            Handler = (_, _, _) => Task.FromResult(new ToolResult(
+                true, "Command 'echo hi' is not in the workspace allowlist. Allowed commands: dotnet, git.")),
+        };
+
+        int call = 0;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                call++;
+                return call == 1
+                    ? Task.FromResult(FunctionCallResponse("shell_run"))
+                    : Task.FromResult(TextResponse());
+            });
+
+        var runner = BuildRunner(chatClient, [missTool]);
+
+        var result = await runner.RunAsync(MakeRequest(), CancellationToken.None);
+
+        // The run completed normally — NOT latched as a SandboxViolation, and not aborted after
+        // the error result. The model was called again (turn 2) after being handed the error.
+        result.Outcome.Should().Be(AgentRunOutcome.Completed);
+        result.Outcome.Should().NotBe(AgentRunOutcome.SandboxViolation);
+        result.TurnsUsed.Should().Be(2);
+        missTool.Calls.Should().Be(1);
+        await chatClient.Received(2).GetResponseAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>());
+    }
+
     // ── Test: cancellation ────────────────────────────────────────────────────
 
     [Fact]

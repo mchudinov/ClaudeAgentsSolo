@@ -160,7 +160,9 @@ public sealed class ContainerIsolationRoutingTests
         var act = async () => await sandbox.RunAsync(
             "rm -rf /", ValidCwd, TimeSpan.FromSeconds(30), CancellationToken.None, isolate: true);
 
-        await act.Should().ThrowAsync<SandboxViolationException>();
+        // The allowlist is enforced identically under isolation: rm is not allowed (and not a
+        // deny rule), so it is a recoverable miss — and crucially it never reaches the container.
+        await act.Should().ThrowAsync<CommandNotAllowedException>();
         stub.InvocationCount.Should().Be(0);
     }
 }

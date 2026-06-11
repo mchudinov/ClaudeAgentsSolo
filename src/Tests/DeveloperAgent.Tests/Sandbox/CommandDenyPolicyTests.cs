@@ -29,7 +29,6 @@ public sealed class CommandDenyPolicyTests
     [InlineData("git", "push", "origin", "main", "--force")]
     [InlineData("git", "push", "-f")]
     [InlineData("git", "push", "-f", "origin", "main")]
-    [InlineData("git", "push", "--force-with-lease")]
     [InlineData("gh", "secret", "set", "MY_TOKEN")]
     [InlineData("gh", "secret", "remove", "MY_TOKEN")]
     [InlineData("gh", "secret", "delete", "MY_TOKEN")]
@@ -68,6 +67,12 @@ public sealed class CommandDenyPolicyTests
     [InlineData("git", "status")]
     [InlineData("git", "push", "origin", "main")] // push without --force is allowed by deny policy
     [InlineData("git", "push", "--set-upstream", "origin", "my-branch")]
+    // --force-with-lease is the SAFE, lease-guarded force variant: it refuses to clobber if the
+    // remote moved unexpectedly, so it is the correct way to re-push your own amended/diverged
+    // feature branch (the persona's "amend the same branch and push" workflow). Only blind
+    // --force / -f stay denied.
+    [InlineData("git", "push", "--force-with-lease")]
+    [InlineData("git", "push", "--force-with-lease", "origin", "agent/my-branch")]
     [InlineData("git", "commit", "-m", "fix")]
     [InlineData("chmod", "644", "/tmp/data.txt")] // chmod without +x is fine
     [InlineData("gh", "pr", "create")]            // pr operations are not denied
