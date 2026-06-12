@@ -8,7 +8,9 @@ namespace Agent.Memory;
 /// <see cref="IChatHistoryStore"/> (Dapr in production) with a rolling-window
 /// compaction policy: when the persisted non-system message count exceeds
 /// <see cref="_maxRecentTurns"/>, the older overflow is replaced by a single summary
-/// system message produced by <see cref="ISummarizer"/>.
+/// <see cref="ChatRole.User"/> message produced by <see cref="ISummarizer"/> (a user turn
+/// rather than a system one so the windowed stream always opens with a valid leading
+/// <c>user</c> message — see <see cref="StoreChatHistoryAsync"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,8 +30,10 @@ namespace Agent.Memory;
 /// <item>Preserve any contiguous run of <see cref="ChatRole.System"/> messages at the head;
 ///   everything after that is windowable.</item>
 /// <item>If the windowable count exceeds <see cref="_maxRecentTurns"/>, summarise the
-///   overflow and prepend a single summary system message in front of the most-recent
-///   <see cref="_maxRecentTurns"/> turns.</item>
+///   overflow and prepend a single summary <see cref="ChatRole.User"/> message in front of the
+///   most-recent turns. The overflow/kept boundary is snapped earlier when needed so it never
+///   severs an assistant <c>tool_use</c> from its following <c>tool_result</c> (which would
+///   orphan the result and be rejected by the Anthropic API).</item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -142,14 +146,40 @@ public sealed class DaprChatHistoryProvider : ChatHistoryProvider
             return;
         }
 
-        // Above window — split into overflow (older) + kept (newest _maxRecentTurns).
+        // Above window — split into overflow (older, summarised away) + kept (newest turns).
         var overflowCount = windowableCount - _maxRecentTurns;
+
+        // Pair-safe boundary: a tool call is an assistant `tool_use` message immediately followed by
+        // a `tool_result` message. The Anthropic Messages API rejects a `tool_result` whose matching
+        // `tool_use` is absent ("messages.N.content.0: unexpected `tool_use_id` ... Each tool_result
+        // block must have a corresponding tool_use block in the previous message"). The naive split
+        // can land the boundary *between* the two, leaving the kept window to begin with an orphaned
+        // `tool_result` (its `tool_use` having been folded into the summarised overflow). Walk the
+        // boundary earlier so the assistant message that owns the result is kept alongside it.
+        while (overflowCount > 0 && HasFunctionResult(combined[leadingSystemCount + overflowCount]))
+            overflowCount--;
+
+        if (overflowCount == 0)
+        {
+            // Snapping pulled the whole windowable region back in (an unbroken tool-call chain with
+            // no safe split point) — nothing left to summarise, so persist verbatim like below-window.
+            await _store.SaveAsync(_agentId, _projectItemId, combined, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         var overflow = combined.GetRange(leadingSystemCount, overflowCount);
-        var kept = combined.GetRange(leadingSystemCount + overflowCount, _maxRecentTurns);
+        var keptCount = combined.Count - leadingSystemCount - overflowCount;
+        var kept = combined.GetRange(leadingSystemCount + overflowCount, keptCount);
 
         var summaryText = await _summarizer.SummarizeAsync(overflow, cancellationToken)
             .ConfigureAwait(false);
-        var summaryMessage = new ChatMessage(ChatRole.System, SummaryPrefix + summaryText);
+        // The summary leads the windowed message stream as a USER turn, not a System message: a
+        // System message is hoisted into the top-level `system` request parameter, so it would leave
+        // `messages[0]` as the kept window's first turn — which, after pair-safe snapping, is an
+        // assistant `tool_use`. The API requires the first message to use the `user` role, so the
+        // summary itself carries that leading user turn.
+        var summaryMessage = new ChatMessage(ChatRole.User, SummaryPrefix + summaryText);
 
         var rebuilt = new List<ChatMessage>(capacity: leadingSystemCount + 1 + kept.Count);
         for (var i = 0; i < leadingSystemCount; i++) rebuilt.Add(combined[i]);
@@ -161,13 +191,31 @@ public sealed class DaprChatHistoryProvider : ChatHistoryProvider
     }
 
     /// <summary>
-    /// Returns <see langword="true"/> when <paramref name="message"/> is a summary
-    /// system message produced by this provider (recognised by the
-    /// <see cref="SummaryPrefix"/> marker on its <see cref="ChatMessage.Text"/>).
+    /// Returns <see langword="true"/> when <paramref name="message"/> carries a tool result
+    /// (<see cref="FunctionResultContent"/>) — i.e. it maps to a `tool_result` block whose matching
+    /// `tool_use` lives in the preceding assistant message. Used to keep the rolling-window boundary
+    /// from severing a tool_use/tool_result pair.
+    /// </summary>
+    private static bool HasFunctionResult(ChatMessage message)
+    {
+        foreach (var content in message.Contents)
+        {
+            if (content is FunctionResultContent) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="message"/> is a summary message produced
+    /// by this provider, recognised solely by the <see cref="SummaryPrefix"/> marker on its
+    /// <see cref="ChatMessage.Text"/> — independent of role. The role check is deliberately omitted:
+    /// summaries were historically emitted as <see cref="ChatRole.System"/> and are now emitted as
+    /// <see cref="ChatRole.User"/>, and a persisted history written before the change may still hold
+    /// a System-role summary. Matching on the marker alone keeps the stripping migration-safe so a
+    /// stale summary can never co-exist with a freshly produced one.
     /// </summary>
     private static bool IsSummaryMessage(ChatMessage message)
     {
-        if (message.Role != ChatRole.System) return false;
         var text = message.Text;
         return !string.IsNullOrEmpty(text) && text.StartsWith(SummaryPrefix, StringComparison.Ordinal);
     }

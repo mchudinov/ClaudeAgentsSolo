@@ -20,6 +20,16 @@ public sealed class DoneActivity : WorkflowActivity<DoneActivityInput, object?>
     private readonly ITaskStateStore _taskStateStore;
     private readonly AgentMetrics _metrics;
 
+    /// <summary>
+    /// Return-reason comment posted when a closed-without-merge PR sends the item to Backlog. Kept
+    /// distinct from the triage-reject and already-resolved reasons, and actionable (Backlog is
+    /// write-only, so the comment is the human's only signal that the item was parked and how to revive it).
+    /// </summary>
+    private const string ClosedPrParkComment =
+        "**Returned to Backlog: the pull request was closed without being merged.** " +
+        "No reviewer remains to act on this item, so the agent parked it for a human to re-triage. " +
+        "If the work is still wanted, move the item back to **Ready** to re-queue it.";
+
     public DoneActivity(
         ILogger<DoneActivity> logger,
         IGitHubProjectService github,
@@ -95,6 +105,21 @@ public sealed class DoneActivity : WorkflowActivity<DoneActivityInput, object?>
             // so park the item InReview → Backlog (mirroring the no-PR Step-53 parking, from the
             // InReview column) for a human to re-triage — rather than leaving it orphaned in
             // In Review, where it would be re-polled on every agent restart.
+            //
+            // Always record WHY the item was returned: this is the only live Backlog-parking path that
+            // otherwise moves the item with no comment, so a maintainer would see it land in Backlog
+            // with no explanation. Best-effort — a comment failure must not block the park itself.
+            try
+            {
+                await _github.AddItemCommentAsync(input.ContentNodeId, ClosedPrParkComment, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[{Activity}] Failed to post closed-PR park comment. item={ItemId}",
+                    nameof(DoneActivity), input.ProjectItemId);
+            }
+
             try
             {
                 await _github.MoveItemAsync(

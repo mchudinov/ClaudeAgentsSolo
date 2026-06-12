@@ -215,4 +215,18 @@ public sealed class GitHubProjectServiceTests
 
         await client.Received(1).DeleteBranchAsync("agent/feature-x", Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task GetItemCommentsAsync_delegates_to_the_client_and_returns_its_blob()
+    {
+        var client = Client();
+        client.GetItemCommentsAsync("issue-node-1", Arg.Any<CancellationToken>())
+            .Returns("> **@alice**: looks done already");
+        var facade = CreateFacade(client);
+
+        var blob = await facade.GetItemCommentsAsync("issue-node-1", CancellationToken.None);
+
+        blob.Should().Be("> **@alice**: looks done already");
+        await client.Received(1).GetItemCommentsAsync("issue-node-1", Arg.Any<CancellationToken>());
+    }
 }

@@ -74,7 +74,15 @@
       "Bash(sed 's/^[[:space:]]*//')",
       "Bash(grep -iE '^\\(low|medium|high|xhigh|max\\)$')",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('src/ReviewerAgent/appsettings.json','utf8'\\)\\); console.log\\('appsettings.json: valid JSON'\\)\")",
-      "Bash(python -c \"import json; json.load\\(open\\('src/ReviewerAgent/appsettings.json'\\)\\); print\\('appsettings.json: valid JSON'\\)\")"
+      "Bash(python -c \"import json; json.load\\(open\\('src/ReviewerAgent/appsettings.json'\\)\\); print\\('appsettings.json: valid JSON'\\)\")",
+      "PowerShell(gh *)",
+      "Bash(python -c 'import sys,json; d=json.load\\(sys.stdin\\); items=d.get\\('\\\\''items'\\\\'',[]\\); *)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); items=[\\(i.get\\('status'\\),i.get\\('title'\\),i.get\\('id'\\)\\) for i in d['items']]; [print\\(s,'|',t,'|',iid\\) for \\(s,t,iid\\) in items if s in \\('Backlog','In progress','Ready'\\)]\")",
+      "PowerShell($asm = [System.Reflection.Assembly]::LoadFrom\\(\"$env:USERPROFILE\\\\.nuget\\\\packages\\\\anthropic\\\\12.24.1\\\\lib\\\\net9.0\\\\Anthropic.dll\"\\); $t = $asm.GetType\\(\"Anthropic.Models.Messages.MessageCreateParams\"\\); $t.GetProperty\\(\"Model\"\\).PropertyType.FullName)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(i.get\\('status'\\),'|',i.get\\('content',{}\\).get\\('title'\\),'|',i.get\\('id'\\)\\) for i in d.get\\('items',[]\\)]\")",
+      "Bash(grep -iA 12 \"Message\\\\|Stack\\\\|orphan\\\\|tool_result\\\\|Expected\")",
+      "Bash(awk END{print NR} *)"
     ]
   }
 }

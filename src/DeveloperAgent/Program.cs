@@ -8,6 +8,7 @@ using DeveloperAgent.Dashboard;
 using DeveloperAgent.GitHub;
 using DeveloperAgent.Lifecycle;
 using DeveloperAgent.Observability;
+using DeveloperAgent.Resolution;
 using DeveloperAgent.Triage;
 using Dapr.Client;
 using Dapr.Workflow;
@@ -145,6 +146,16 @@ public class Program
                 .Validate(o => !o.Enabled || !string.IsNullOrWhiteSpace(o.RepoScope),
                     "Triage.RepoScope must be set when Triage.Enabled is true")
                 .ValidateOnStart();
+
+            // ── Already-resolved gate ───────────────────────────────────────────
+            // After the branch/workspace is prepared, this gate decides whether the work is already
+            // implemented in the real working tree and parks already-done items in Backlog rather than
+            // re-implementing them. Disabled by default in the record so a host without a ResolutionCheck
+            // section boots unchanged; its judgment quality needs prompt-tuning against live runs, so it
+            // is opt-in (set ResolutionCheck:Enabled=true).
+            builder.Services
+                .AddOptions<ResolutionCheckOptions>()
+                .Bind(builder.Configuration.GetSection("ResolutionCheck"));
 
             builder.Services
                 .AddOptions<WorkspaceOptions>()
@@ -295,6 +306,12 @@ public class Program
             // Relevance-triage gate (Step-54): one lightweight Anthropic classification call per item,
             // reusing the same chat-client transport as the agent. Singleton (stateless).
             builder.Services.AddSingleton<ITriageService, AnthropicTriageService>();
+
+            // Already-resolved gate: one lightweight Anthropic classification call per item over a
+            // deterministic working-tree snapshot, parking already-implemented items in Backlog.
+            // Singletons (stateless); gated off by default via ResolutionCheckOptions.Enabled.
+            builder.Services.AddSingleton<IWorkingTreeSnapshot, FileTreeSnapshot>();
+            builder.Services.AddSingleton<IResolutionChecker, AnthropicResolutionChecker>();
 
             // ── Observability ─────────────────────────────────────────────────────
             // AgentMetrics owns the "ClaudeAgentsSolo.DeveloperAgent" Meter; subscribe

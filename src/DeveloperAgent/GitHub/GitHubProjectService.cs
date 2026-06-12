@@ -92,6 +92,9 @@ internal sealed class GitHubProjectService : IGitHubProjectService
     public Task AddItemCommentAsync(string contentNodeId, string markdownBody, CancellationToken ct)
         => _client.AddItemCommentAsync(contentNodeId, markdownBody, ct);
 
+    public Task<string> GetItemCommentsAsync(string contentNodeId, CancellationToken ct)
+        => _client.GetItemCommentsAsync(contentNodeId, ct);
+
     public Task<PullRequest> CreatePullRequestAsync(CreatePullRequest request, CancellationToken ct)
         => _client.CreatePullRequestAsync(request, ct);
 

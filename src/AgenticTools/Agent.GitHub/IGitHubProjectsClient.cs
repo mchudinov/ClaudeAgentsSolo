@@ -25,6 +25,13 @@ public interface IGitHubProjectsClient
     Task AddItemCommentAsync(string contentNodeId, string markdownBody, CancellationToken ct);
 
     /// <summary>
+    /// Fetches every comment on the item's underlying issue/PR node (identified by
+    /// <paramref name="contentNodeId"/>), concatenated oldest-first as a single markdown blob.
+    /// Returns an empty string when the item has no comments.
+    /// </summary>
+    Task<string> GetItemCommentsAsync(string contentNodeId, CancellationToken ct);
+
+    /// <summary>
     /// Creates a pull request from <paramref name="request"/>. If a PR already exists for the head
     /// branch (422 already_exists), returns the existing PR instead of throwing.
     /// </summary>

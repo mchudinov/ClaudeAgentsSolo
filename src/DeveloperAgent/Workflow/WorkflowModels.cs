@@ -45,10 +45,11 @@ public sealed record TaskInput(string ProjectItemId, string ContentNodeId, int C
 }
 
 /// <summary>Final result produced by <see cref="DeveloperTaskWorkflow"/>.</summary>
-/// <param name="Outcome">One of "Done", "Failed", "MergeFailed", "Rejected", or "Cancelled".
-/// "MergeFailed" means the PR was approved but the squash-merge was refused (conflict / branch
-/// protection); the item is left In-review for a human. "Rejected" means the relevance-triage gate
-/// parked the item in Backlog before any work began.</param>
+/// <param name="Outcome">One of "Done", "Failed", "MergeFailed", "Rejected", "AlreadyResolved", or
+/// "Cancelled". "MergeFailed" means the PR was approved but the squash-merge was refused (conflict /
+/// branch protection); the item is left In-review for a human. "Rejected" means the relevance-triage
+/// gate parked the item in Backlog before any work began. "AlreadyResolved" means the already-resolved
+/// gate judged the work already implemented and parked the item in Backlog after the branch was created.</param>
 public sealed record TaskResult(string Outcome);
 
 /// <summary>
@@ -67,6 +68,21 @@ public sealed record TriageActivityInput(
     int ContentNumber,
     string Title,
     string BodyMarkdown);
+
+/// <summary>Input for <see cref="Activities.CheckAlreadyResolvedActivity"/>.</summary>
+/// <remarks>
+/// Runs after <see cref="Activities.CreateBranchActivity"/> (so a real working tree exists at
+/// <see cref="WorkspacePath"/>) but before <see cref="Activities.PlanActivity"/>. The branch/default
+/// fields are carried so the activity can release the workspace if it parks the item.
+/// </remarks>
+public sealed record ResolutionCheckActivityInput(
+    string ProjectItemId,
+    string ContentNodeId,
+    string Title,
+    string BodyMarkdown,
+    string BranchName,
+    string WorkspacePath,
+    string DefaultBranch);
 
 /// <summary>Input for <see cref="Activities.AcquireTaskActivity"/>.</summary>
 public sealed record AcquireTaskActivityInput(
@@ -155,6 +171,13 @@ public sealed record MergePullRequestActivityInput(
 /// moved the item to Backlog; the workflow stops with outcome "Rejected".</param>
 /// <param name="Reason">The triage justification (or a disabled/fail-open note), for logging.</param>
 public sealed record TriageActivityResult(bool IsRelevant, string Reason);
+
+/// <summary>Result of <see cref="Activities.CheckAlreadyResolvedActivity"/>.</summary>
+/// <param name="IsAlreadyResolved">When <see langword="true"/>, the activity has already commented,
+/// parked the item in Backlog, and released the workspace; the workflow stops with outcome
+/// "AlreadyResolved". When <see langword="false"/> the workflow proceeds to plan/implement.</param>
+/// <param name="Reason">The judgment justification (or a disabled/fail-open note), for logging.</param>
+public sealed record ResolutionCheckActivityResult(bool IsAlreadyResolved, string Reason);
 
 /// <summary>Result of <see cref="Activities.AcquireTaskActivity"/>.</summary>
 public sealed record AcquireTaskResult(string BranchName);

@@ -33,6 +33,7 @@ public static class WorkflowServiceCollectionExtensions
         {
             opt.RegisterWorkflow<DeveloperTaskWorkflow>();
             opt.RegisterActivity<TriageActivity>();
+            opt.RegisterActivity<CheckAlreadyResolvedActivity>();
             opt.RegisterActivity<AcquireTaskActivity>();
             opt.RegisterActivity<CreateBranchActivity>();
             opt.RegisterActivity<PlanActivity>();

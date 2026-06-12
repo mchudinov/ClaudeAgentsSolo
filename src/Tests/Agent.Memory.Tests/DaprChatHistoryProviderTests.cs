@@ -45,6 +45,40 @@ public sealed class DaprChatHistoryProviderTests
     private static ChatMessage Assistant(string text) => new(ChatRole.Assistant, text);
     private static ChatMessage System(string text) => new(ChatRole.System, text);
 
+    /// <summary>An assistant turn carrying a single <c>tool_use</c> (FunctionCallContent).</summary>
+    private static ChatMessage ToolCall(string callId, string name) =>
+        new(ChatRole.Assistant, new List<AIContent> { new FunctionCallContent(callId, name) });
+
+    /// <summary>A tool turn carrying the matching <c>tool_result</c> (FunctionResultContent).</summary>
+    private static ChatMessage ToolResult(string callId, string result) =>
+        new(ChatRole.Tool, new List<AIContent> { new FunctionResultContent(callId, result) });
+
+    /// <summary>
+    /// Asserts the exact invariant the Anthropic Messages API enforces: every
+    /// <see cref="FunctionResultContent"/> (tool_result) must reference a
+    /// <see cref="FunctionCallContent"/> (tool_use) that appears earlier in the list.
+    /// </summary>
+    private static void AssertNoOrphanedToolResults(IReadOnlyList<ChatMessage> messages)
+    {
+        var seenCallIds = new HashSet<string>();
+        foreach (var message in messages)
+        {
+            foreach (var content in message.Contents)
+            {
+                switch (content)
+                {
+                    case FunctionCallContent call:
+                        seenCallIds.Add(call.CallId);
+                        break;
+                    case FunctionResultContent result:
+                        seenCallIds.Should().Contain(result.CallId,
+                            because: "every tool_result must have a corresponding tool_use earlier in the request");
+                        break;
+                }
+            }
+        }
+    }
+
     private static (DaprChatHistoryProvider provider, InMemoryChatHistoryStore store, StubSummarizer summarizer)
         BuildProvider(int maxRecentTurns)
     {
@@ -139,15 +173,15 @@ public sealed class DaprChatHistoryProviderTests
         var persisted = await store.LoadAsync(AgentId, ProjectItemId, CancellationToken.None);
 
         persisted.Should().NotBeNull();
-        // Expected layout: 1 summary system message + 4 most-recent windowable turns = 5.
+        // Expected layout: 1 summary user message + 4 most-recent windowable turns = 5.
         persisted!.Should().HaveCount(1 + Window);
-        persisted[0].Role.Should().Be(ChatRole.System);
+        persisted[0].Role.Should().Be(ChatRole.User,
+            because: "the summary leads the window as a user turn so messages[0] is a valid user message");
         persisted[0].Text.Should().StartWith(DaprChatHistoryProvider.SummaryPrefix);
         persisted.Skip(1).Select(m => m.Text)
             .Should().Equal("u3", "a3", "u4", "a4");
         // No second summary message was appended — there is exactly one.
-        persisted.Count(m => m.Role == ChatRole.System
-                             && m.Text.StartsWith(DaprChatHistoryProvider.SummaryPrefix))
+        persisted.Count(m => m.Text.StartsWith(DaprChatHistoryProvider.SummaryPrefix))
             .Should().Be(1, because: "summaries REPLACE prior overflow, they don't accumulate");
 
         summarizer.Invocations.Should().HaveCount(1,
@@ -202,10 +236,10 @@ public sealed class DaprChatHistoryProviderTests
         tail.Should().NotContain(s => s.StartsWith(DaprChatHistoryProvider.SummaryPrefix),
             because: "the kept tail is raw turns only — no summary marker should appear there");
 
-        // Exactly one summary message in the persisted list.
-        afterSecond.Count(m => m.Role == ChatRole.System
-                               && m.Text.StartsWith(DaprChatHistoryProvider.SummaryPrefix))
+        // Exactly one summary message in the persisted list, and it leads as a user turn.
+        afterSecond.Count(m => m.Text.StartsWith(DaprChatHistoryProvider.SummaryPrefix))
             .Should().Be(1);
+        afterSecond[0].Role.Should().Be(ChatRole.User);
 
         // Second summarizer call must have happened, and its input must NOT contain a
         // prior summary — the provider re-summarises raw turns, never summary-of-summary.
@@ -217,6 +251,58 @@ public sealed class DaprChatHistoryProviderTests
         secondInput.Select(m => m.Text).Should().Equal(new[] { "u3", "a3" },
             because: "round 2 overflows the two oldest raw turns remaining after stripping " +
                      "the prior summary and appending the new round's request+response");
+    }
+
+    // ─── Acceptance case 4 (bug fix): pair-safe windowing + leading user summary ──
+    //
+    // Regression for the production AnthropicBadRequestException:
+    //   "messages.0.content.0: unexpected `tool_use_id` found in `tool_result` blocks: toolu_... .
+    //    Each `tool_result` block must have a corresponding `tool_use` block in the previous message."
+    //
+    // The rolling window split a tool_use/tool_result pair: the assistant `tool_use` fell into the
+    // summarised overflow while the following `tool_result` became the first kept message — an
+    // orphaned tool_result the Anthropic API rejects. The window must (a) never begin with an
+    // orphaned tool_result, and (b) start the message stream with a user turn (the summary), because
+    // a System summary is hoisted into the top-level system parameter and so cannot satisfy the
+    // first-message-must-be-user rule.
+
+    [Fact]
+    public async Task StoreChatHistoryAsync_never_splits_a_tool_use_tool_result_pair()
+    {
+        const int Window = 2;
+        var (provider, store, summarizer) = BuildProvider(maxRecentTurns: Window);
+
+        // kickoff(user), tool_use(call1), tool_result(call1) already persisted; a final assistant
+        // message arrives. windowable = 4, window = 2 -> the naive split keeps [tool_result, final],
+        // orphaning tool_result(call1) whose tool_use(call1) would be summarised away.
+        var prior = new List<ChatMessage>
+        {
+            User("kickoff"),
+            ToolCall("call1", "read_file"),
+            ToolResult("call1", "file contents"),
+        };
+        await store.SaveAsync(AgentId, ProjectItemId, prior, CancellationToken.None);
+
+        await InvokeStoreAsync(provider, Array.Empty<ChatMessage>(), new[] { Assistant("final answer") });
+
+        var persisted = await store.LoadAsync(AgentId, ProjectItemId, CancellationToken.None);
+
+        persisted.Should().NotBeNull();
+
+        // (a) No orphaned tool_result — the exact invariant the Anthropic API enforces.
+        AssertNoOrphanedToolResults(persisted!);
+
+        // (b) The message stream starts with a user turn (the summary) so messages[0] is a valid
+        //     leading `user` message rather than an assistant/tool block.
+        var firstNonSystem = persisted!.First(m => m.Role != ChatRole.System);
+        firstNonSystem.Role.Should().Be(ChatRole.User,
+            because: "a System summary is hoisted to the top-level system param, so the window must " +
+                     "lead with a user message to satisfy the first-message-must-be-user rule");
+        firstNonSystem.Text.Should().StartWith(DaprChatHistoryProvider.SummaryPrefix);
+
+        // The tool_use that owns the kept tool_result was pulled back into the window, not summarised.
+        persisted!.Any(m => m.Contents.OfType<FunctionCallContent>().Any(c => c.CallId == "call1"))
+            .Should().BeTrue(because: "the kept tool_result's matching tool_use must remain in the window");
     }
 
     // ─── Supporting invariants ────────────────────────────────────────────────────
@@ -273,11 +359,14 @@ public sealed class DaprChatHistoryProviderTests
         var persisted = await store.LoadAsync(AgentId, ProjectItemId, CancellationToken.None);
 
         persisted.Should().NotBeNull();
-        // 2 leading system + 1 summary + window-of-2 = 5.
+        // 2 leading system + 1 summary + window-of-2 = 5. Leading system (persona) messages stay at
+        // the head; the summary follows them as a user turn (the first non-system message).
         persisted!.Should().HaveCount(2 + 1 + Window);
+        persisted[0].Role.Should().Be(ChatRole.System);
         persisted[0].Text.Should().Be("persona-line-1");
+        persisted[1].Role.Should().Be(ChatRole.System);
         persisted[1].Text.Should().Be("persona-line-2");
-        persisted[2].Role.Should().Be(ChatRole.System);
+        persisted[2].Role.Should().Be(ChatRole.User);
         persisted[2].Text.Should().StartWith(DaprChatHistoryProvider.SummaryPrefix);
         persisted.Skip(3).Select(m => m.Text).Should().Equal("a2", "u3");
 

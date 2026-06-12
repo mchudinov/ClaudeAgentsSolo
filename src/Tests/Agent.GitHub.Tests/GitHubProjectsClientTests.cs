@@ -1271,4 +1271,106 @@ public sealed class GitHubProjectsClientTests
 
         status.Mergeable.Should().BeTrue();
     }
+
+    // ── §D.8b: GetItemCommentsAsync ───────────────────────────────────────────
+
+    [Fact]
+    public async Task GetItemCommentsAsync_returns_formatted_blob_of_all_comments_oldest_first()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(
+                   Arg.Is<string>(s => s.Contains("comments")),
+                   Arg.Any<Dictionary<string, object>?>(),
+                   Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse("""
+                   {
+                     "data": {
+                       "node": {
+                         "comments": {
+                           "nodes": [
+                             { "author": { "login": "alice" }, "body": "First comment", "createdAt": "2026-06-01T10:00:00Z" },
+                             { "author": { "login": "bob" }, "body": "Second comment", "createdAt": "2026-06-02T11:00:00Z" }
+                           ]
+                         }
+                       }
+                     }
+                   }
+                   """).RootElement);
+
+        var svc = CreateClient(graphQL, rest);
+
+        var result = await svc.GetItemCommentsAsync("issue-node-1", CancellationToken.None);
+
+        result.Should().Contain("alice").And.Contain("First comment");
+        result.Should().Contain("bob").And.Contain("Second comment");
+        result.IndexOf("alice", StringComparison.Ordinal)
+              .Should().BeLessThan(result.IndexOf("bob", StringComparison.Ordinal),
+                  "comments are concatenated in the order GitHub returns them (oldest first)");
+    }
+
+    [Fact]
+    public async Task GetItemCommentsAsync_queries_the_node_by_content_node_id()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse("""{"data":{"node":{"comments":{"nodes":[]}}}}""").RootElement);
+
+        var svc = CreateClient(graphQL, rest);
+
+        await svc.GetItemCommentsAsync("issue-node-xyz", CancellationToken.None);
+
+        await graphQL.Received(1).RunQueryAsync(
+            Arg.Is<string>(s => s.Contains("node") && s.Contains("comments")),
+            Arg.Is<Dictionary<string, object>?>(d => d != null && d["id"].Equals("issue-node-xyz")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetItemCommentsAsync_returns_empty_string_when_no_comments()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        graphQL.RunQueryAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse("""{"data":{"node":{"comments":{"nodes":[]}}}}""").RootElement);
+
+        var svc = CreateClient(graphQL, rest);
+
+        var result = await svc.GetItemCommentsAsync("issue-node-1", CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetItemCommentsAsync_tolerates_missing_node_and_null_author()
+    {
+        var graphQL = Substitute.For<IGraphQLTransport>();
+        var rest = Substitute.For<IRestTransport>();
+
+        // A deleted-author comment has author: null; the node may also be absent entirely.
+        graphQL.RunQueryAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+               .Returns(JsonDocument.Parse("""
+                   {
+                     "data": {
+                       "node": {
+                         "comments": {
+                           "nodes": [
+                             { "author": null, "body": "Comment from a deleted user", "createdAt": "2026-06-01T10:00:00Z" }
+                           ]
+                         }
+                       }
+                     }
+                   }
+                   """).RootElement);
+
+        var svc = CreateClient(graphQL, rest);
+
+        var result = await svc.GetItemCommentsAsync("issue-node-1", CancellationToken.None);
+
+        result.Should().Contain("Comment from a deleted user");
+    }
 }

@@ -137,6 +137,35 @@ public sealed class DoneActivityTests
     }
 
     [Fact]
+    public async Task Failure_path_with_PR_and_ParkInBacklog_comments_the_return_reason()
+    {
+        // "Always write a comment with the reason why the item was returned." The closed-PR park is
+        // the one live Backlog-parking path that previously moved the item with no comment, leaving a
+        // human no recorded reason on the item. DoneActivity must post a distinct return-reason comment
+        // on the issue node before (or alongside) the move.
+        var github = Substitute.For<IGitHubProjectService>();
+        var activity = BuildActivity(github);
+
+        var input = new DoneActivityInput(
+            ProjectItemId: "PVTI_abc",
+            ContentNodeId: "I_node",
+            WorkspacePath: string.Empty,
+            BranchName: "agent/branch",
+            DefaultBranch: "main",
+            PullRequestNumber: 99,
+            Success: false,
+            ToolCallsUsed: 5,
+            ParkInBacklog: true);
+
+        await activity.RunAsync(MakeContext(), input);
+
+        await github.Received(1).AddItemCommentAsync(
+            "I_node",
+            Arg.Is<string>(s => s.Contains("Backlog") && s.Contains("closed")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Failure_path_with_PR_does_not_move_item()
     {
         var github = Substitute.For<IGitHubProjectService>();

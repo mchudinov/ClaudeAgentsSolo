@@ -212,6 +212,51 @@ internal sealed class GitHubProjectsClient : IGitHubProjectsClient
         }, ct).ConfigureAwait(false);
     }
 
+    public async Task<string> GetItemCommentsAsync(string contentNodeId, CancellationToken ct)
+    {
+        // Read by GraphQL node ID — the same `contentNodeId` AddItemCommentAsync posts to — so the
+        // call works for both Issue and PullRequest content without needing owner/repo/number.
+        var query = """
+            query GetItemComments($id: ID!) {
+              node(id: $id) {
+                ... on Issue {
+                  comments(first: 100) { nodes { author { login } body createdAt } }
+                }
+                ... on PullRequest {
+                  comments(first: 100) { nodes { author { login } body createdAt } }
+                }
+              }
+            }
+            """;
+
+        var result = await _graphQL.RunQueryAsync(query, new Dictionary<string, object>
+        {
+            ["id"] = contentNodeId
+        }, ct).ConfigureAwait(false);
+
+        if (!result.TryGetProperty("data", out var data)) return string.Empty;
+        if (!data.TryGetProperty("node", out var node) || node.ValueKind != JsonValueKind.Object) return string.Empty;
+        if (!node.TryGetProperty("comments", out var comments)) return string.Empty;
+        if (!comments.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
+            return string.Empty;
+
+        var formatted = new List<string>();
+        foreach (var c in nodes.EnumerateArray())
+        {
+            var login = c.TryGetProperty("author", out var author)
+                        && author.ValueKind == JsonValueKind.Object
+                        && author.TryGetProperty("login", out var loginProp)
+                        && loginProp.ValueKind == JsonValueKind.String
+                ? loginProp.GetString() ?? "unknown"
+                : "unknown";
+            var body = c.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() ?? string.Empty : string.Empty;
+            var createdAt = c.TryGetProperty("createdAt", out var ca) ? ca.GetString() ?? string.Empty : string.Empty;
+            formatted.Add(FormatItemComment(login, body, createdAt));
+        }
+
+        return formatted.Count == 0 ? string.Empty : string.Join("\n\n", formatted);
+    }
+
     public async Task<PullRequest> CreatePullRequestAsync(CreatePullRequest request, CancellationToken ct)
     {
         var result = await _rest.CreatePullRequestAsync(
@@ -618,6 +663,16 @@ internal sealed class GitHubProjectsClient : IGitHubProjectsClient
     {
         var header = $"> **@{c.UserLogin}** on {c.CreatedAt:yyyy-MM-ddTHH:mm:ssZ}:";
         var bodyLines = c.Body.Split('\n').Select(l => $"> {l}");
+        return header + "\n" + string.Join("\n", bodyLines);
+    }
+
+    /// <summary>Formats one item (issue/PR) comment fetched by <see cref="GetItemCommentsAsync"/>.</summary>
+    private static string FormatItemComment(string login, string body, string createdAt)
+    {
+        var header = string.IsNullOrEmpty(createdAt)
+            ? $"> **@{login}**:"
+            : $"> **@{login}** on {createdAt}:";
+        var bodyLines = body.Split('\n').Select(l => $"> {l}");
         return header + "\n" + string.Join("\n", bodyLines);
     }
 }

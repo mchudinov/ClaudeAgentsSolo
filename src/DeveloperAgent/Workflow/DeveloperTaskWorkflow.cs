@@ -127,6 +127,26 @@ public sealed class DeveloperTaskWorkflow : Workflow<TaskInput, TaskResult>
             nameof(CreateBranchActivity), branchInput, retryOptions);
         await SaveSessionAsync(context, input.ProjectItemId, nameof(CreateBranchActivity), session.Summary, retryOptions);
 
+        // ── 2b. ALREADY-RESOLVED GATE ───────────────────────────────────────────
+        // Now that a working tree exists, decide whether the work is already implemented before
+        // spending a full agent round on it. The Enabled gate lives inside the activity (disabled →
+        // always not-resolved), so the workflow body stays deterministic and config-free. On an
+        // already-resolved verdict the activity has already commented, moved the item InProgress →
+        // Backlog, and released the workspace, so we just clean up the session and stop.
+        var resolutionInput = new ResolutionCheckActivityInput(
+            input.ProjectItemId, input.ContentNodeId, input.Title, input.BodyMarkdown,
+            acquireResult.BranchName, branchResult.WorkspacePath, branchResult.DefaultBranch);
+
+        var resolutionResult = await context.CallActivityAsync<ResolutionCheckActivityResult>(
+            nameof(CheckAlreadyResolvedActivity), resolutionInput, retryOptions);
+
+        if (resolutionResult is { IsAlreadyResolved: true })
+        {
+            await SaveSessionAsync(context, input.ProjectItemId, nameof(CheckAlreadyResolvedActivity), session.Summary, retryOptions);
+            await DeleteSessionAsync(context, input.ProjectItemId, retryOptions);
+            return new TaskResult("AlreadyResolved");
+        }
+
         // ── 3. PLAN (agent round 1) ─────────────────────────────────────────────
         var planInput = new PlanActivityInput(
             input.ProjectItemId, input.ContentNodeId, input.ContentNumber,
