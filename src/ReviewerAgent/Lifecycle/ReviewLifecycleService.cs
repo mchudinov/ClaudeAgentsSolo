@@ -76,7 +76,25 @@ public sealed class ReviewLifecycleService : BackgroundService
             if (await IsDueAsync(gitHub, pr, ct).ConfigureAwait(false))
             {
                 _logger.LogInformation("Reviewing PR #{Number} (head {Sha}).", pr.Number, pr.HeadSha);
-                await reviewer.ReviewAsync(pr.Number, ct).ConfigureAwait(false);
+                try
+                {
+                    await reviewer.ReviewAsync(pr.Number, ct).ConfigureAwait(false);
+                }
+                catch (SelfReviewNotAllowedException ex)
+                {
+                    // GitHub rejected the review because the reviewer authenticates as the PR's own
+                    // author — it forbids approving/requesting-changes on your own PR (422). This is a
+                    // per-PR misconfiguration, not a transient fault: skip this PR (don't abort the rest
+                    // of the sweep) and log loudly with the fix. ex.Message carries GitHub's own 422 text.
+                    _logger.LogError(ex,
+                        "Cannot review PR #{Number}: GitHub rejected the review — \"{GitHubMessage}\". " +
+                        "The ReviewerAgent is authenticating as the PR author (the same GitHub identity as " +
+                        "the DeveloperAgent), and GitHub does not allow approving or requesting changes on " +
+                        "your own pull request. Give the ReviewerAgent a distinct GitHub identity (a separate " +
+                        "bot account or a GitHub App installation token) so its approvals are accepted. " +
+                        "Skipping this PR.",
+                        pr.Number, ex.Message);
+                }
             }
         }
     }

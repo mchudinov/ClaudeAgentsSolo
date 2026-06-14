@@ -320,7 +320,39 @@ internal sealed class OctokitRestTransport : IRestTransport
             Body = body,
             Event = ToReviewEvent(verdict),
         };
-        await GetClient().PullRequest.Review.Create(owner, repo, number, review).ConfigureAwait(false);
+        try
+        {
+            await GetClient().PullRequest.Review.Create(owner, repo, number, review).ConfigureAwait(false);
+        }
+        catch (ApiValidationException ex) when (IsSelfReviewRejection(ex, out var gitHubMessage))
+        {
+            // GitHub returns 422 when the authenticated identity is the PR's own author (e.g. "Can not
+            // approve your own pull request"). Translate Octokit's exception into the agent-neutral
+            // domain type so the reviewer host can recognise and report the misconfiguration without
+            // referencing Octokit (the same boundary rule the merge path follows for NotMergeable).
+            throw new SelfReviewNotAllowedException(gitHubMessage, ex);
+        }
+    }
+
+    /// <summary>
+    /// Detects GitHub's "can not approve/request changes on your own pull request" 422 across the
+    /// places Octokit may surface the text (top-level message or per-field error details), and returns
+    /// the most specific message in <paramref name="gitHubMessage"/>.
+    /// </summary>
+    private static bool IsSelfReviewRejection(ApiValidationException ex, out string gitHubMessage)
+    {
+        const string marker = "your own pull request";
+
+        var candidates = new List<string?> { ex.ApiError?.Message };
+        if (ex.ApiError?.Errors is { } errors)
+            candidates.AddRange(errors.Select(e => e.Message));
+        candidates.Add(ex.Message);
+
+        var match = candidates.FirstOrDefault(m =>
+            m is not null && m.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+        gitHubMessage = match ?? string.Empty;
+        return match is not null;
     }
 
     /// <summary>Maps the agent-neutral <see cref="ReviewVerdict"/> onto Octokit's review event.</summary>
