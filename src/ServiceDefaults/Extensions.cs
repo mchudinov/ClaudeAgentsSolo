@@ -28,8 +28,18 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
-            http.AddStandardResilienceHandler();
+            // NOTE: we deliberately do NOT add a blanket resilience handler here.
+            //
+            // The Aspire template ships `http.AddStandardResilienceHandler()` on this line, which
+            // applies the package's hard-coded 10s-per-attempt pipeline to EVERY HttpClient. Every
+            // HTTP client that actually does work in these hosts ("anthropic", "github-rest",
+            // "github-graphql") composes its OWN standard resilience handler — tuned to a 60s attempt
+            // timeout via HttpResilienceConfigurator.Apply — onto its named builder in Program.cs.
+            // A blanket handler here stacks a SECOND pipeline OUTSIDE those, and its 10s timeout fires
+            // first, cancelling slow Anthropic/GitHub calls and silently defeating the configured 60s
+            // (observed as a TimeoutRejectedException at 00:00:10 + SocketException 995). The per-client
+            // handlers are the single source of truth; DaprClient is covered by dapr/.../resiliency.yaml
+            // and the OTLP exporter bypasses IHttpClientFactory. See ServiceDefaultsResilienceWiringTests.
 
             // Turn on service discovery by default
             http.AddServiceDiscovery();
